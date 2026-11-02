@@ -4,13 +4,72 @@ on:
   push:
     branches: [main]
     tags: ["v*"]
+    paths-ignore:
+      - "docs/**"
+      - "**/*.md"
+      - "img/**"
+      - "LICENSE"
+      - "package.json"
+      - "package-lock.json"
+      - "vercel.json"
   pull_request:
+    paths-ignore:
+      - "docs/**"
+      - "**/*.md"
+      - "img/**"
+      - "LICENSE"
+      - "package.json"
+      - "package-lock.json"
+      - "vercel.json"
   workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
+  changes:
+    name: 判断镜像是否需要重建
+    runs-on: ubuntu-24.04
+    outputs:
+      image: ${{ steps.check.outputs.image }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - id: check
+        name: 检查镜像相关文件是否有改动
+        env:
+          EVENT: ${{ github.event_name }}
+          REF_TYPE: ${{ github.ref_type }}
+          BEFORE: ${{ github.event.before }}
+          HEAD_SHA: ${{ github.sha }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          zero=0000000000000000000000000000000000000000
+          if [ "$EVENT" = pull_request ]; then
+            base=$PR_BASE
+            head=$PR_HEAD
+          elif [ "$EVENT" = push ] && [ "$REF_TYPE" = branch ] && [ "$BEFORE" != "$zero" ] && git cat-file -e "$BEFORE^{commit}" 2>/dev/null; then
+            base=$BEFORE
+            head=$HEAD_SHA
+          else
+            echo "无法比较改动（标签、手动触发、新分支或历史被改写），直接构建"
+            echo "image=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          files=$(git diff --name-only "$base...$head")
+          pattern='^(qqcache/|docker/|webui/server/|webui/public/|webui/package(-lock)?\.json$|\.dockerignore$'
+          if [ "$EVENT" = pull_request ]; then pattern+='|\.github/workflows/ci\.yml$'; fi
+          pattern+=')'
+          if grep -Eq "$pattern" <<< "$files"; then
+            echo "image=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "image=false" >> "$GITHUB_OUTPUT"
+          fi
+
   test:
     runs-on: ubuntu-24.04
     steps:
@@ -38,7 +97,8 @@ jobs:
           find webui/server webui/public -name '*.js' -print0 | xargs -0 -n1 node --check
 
   image:
-    needs: test
+    needs: [changes, test]
+    if: needs.changes.outputs.image == 'true'
     runs-on: ubuntu-24.04
     permissions:
       contents: read

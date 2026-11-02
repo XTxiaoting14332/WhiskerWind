@@ -1,6 +1,6 @@
 # automatic 协议 v1
 
-> 版本：v1。在 WebUI「传输管理」页启用，并配置端口、令牌与反向 WebSocket 地址。
+> 版本：v1。在 WebUI「通道管理」页新建「automatic 服务端」或「automatic 反向 WebSocket」通道即可启用。
 
 ## 1. 设计目标
 
@@ -184,7 +184,7 @@ ID 带有类型前缀，群号与 QQ 号不会冲突。
 ## 9. 实现说明
 
 - automatic 与 OneBot v11、Satori 同为核心层（`qqcache/core.py`）之上的协议适配器，共享消息读取、身份解析与发送逻辑。
-- 在 WebUI「传输管理」页启停，并配置监听地址、端口、令牌与反向 WebSocket 地址，修改即时生效。
+- 在 WebUI「通道管理」页管理：「automatic 服务端」通道提供正向 WebSocket 与 HTTP 调用，「automatic 反向 WebSocket」通道主动连接指定地址。每条通道有独立的令牌和事件序号，可以同时存在多条，修改即时生效。监听非回环地址的服务端必须设置令牌。
 - 断线续传窗口默认为 1000 条事件。协议端重启后 `session` 改变，旧 session 的续传请求返回 `resumed: false`。
 - `status.heartbeat` 至多每 30 秒推送一次，不占用 `seq`，也不进入续传窗口。
 - `message.history` 与 `message.get` 返回的消息均为 `delivery: backlog`。

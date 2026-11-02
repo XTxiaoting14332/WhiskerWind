@@ -42,29 +42,24 @@ BFF 也可以薄到只代理：转发 REST 请求 + 把 `post_url` 指向自己�
 ### 1. 概览（Dashboard）
 
 - 服务状态卡：`get_status` → QQ 是否在线（`online/good`）、协议版本、self_id
-- 传输通道状态：HTTP API 地址、已配置的 post_url、正向/反向 WS 连接数
+- 通道状态：HTTP API 地址、已配置的 post_url、正向/反向 WS 连接数
 - 今日事件计数：message / message_sent / meta_event
 - 最近事件滚动条（最近 20 条）
 
 ### 2. 事件日志
 
 - 全量事件流（原始 JSON，可折叠），按 post_type / 会话过滤
-- 调试用途：每条事件的到达时间、走哪个传输通道
+- 调试用途：每条事件的到达时间、走哪个通道
 
-### 3. 传输管理
+### 3. 通道管理
 
-对应上游 `list_transports` / `add_transport` / `del_transport`：
+对应上游 `list_transports` / `add_transport` / `update_transport` / `get_transport_token` / `del_transport`：
 
-- 传输列表：类型徽标（http 监听 / ws_reverse 客户端 / http_post 上报）、地址、状态（listening/connected/connecting）、来源（startup/runtime）
-- 创建表单：三选一类型 → 对应字段（http: host+port；ws_reverse: url+可选token；http_post: url）
-- 删除按钮只对 `source=runtime` 的行可用；`startup` 行置灰并标注"启动参数配置"
-- `ws_reverse` 行显示实时 connected/connecting 状态，用于排查框架连接问题
-- 提示文案：runtime 传输会持久化、重启自动恢复
-
-Satori / automatic 协议卡片（对应上游 `list_protocols` / `set_protocol` / `get_protocol_token`）：
-
-- 每个协议一张配置卡：启停开关、监听地址、端口、令牌（显示 / 复制 / 随机生成）；automatic 另有反向 WS 地址列表，Satori 另有 platform 字段
-- 修改即时生效并自动保存，无需重启服务
+- 通道列表：协议徽标（OneBot v11 / Satori / automatic）、类型、地址（服务端另显示接入地址）、状态（监听中 / 已连接 / 连接中 / 启用，服务端附带客户端数）
+- 新建与编辑共用一个弹窗：先选协议，再选类型，字段随类型切换（监听类：地址 + 端口；连接类：目标地址；Satori 另有 platform）
+- 带独立令牌的通道（OneBot 反向 WS、Satori、automatic）在编辑时可显示、复制或重新生成令牌；令牌不随列表下发
+- `source=startup` 的行标注「启动参数」，编辑与删除按钮置灰
+- 新建、修改、删除即时生效并自动保存，服务重启后自动恢复
 
 ### 4. 服务日志
 
@@ -80,7 +75,7 @@ Satori / automatic 协议卡片（对应上游 `list_protocols` / `set_protocol`
 - 只读展示 serve 启动参数（API 地址、self_id、上报目标）
 - **登录状态**：`get_login_state` 轮询——`logged_in` 显示绿点+账号；`login_required` 显示二维码（`GET /qr`，用户点"刷新"按钮才重新请求，不过期不自动刷；`qr_expired` 时叠"已过期"徽标）；`unknown`/`not_running` 提示异常；**容器离线**（BFF 连不上上游）是第四种状态，单独展示
 - 调试用：`GET /screen` 整屏截图入口（排查 GUI 状态时一眼看到容器里真实画面）
-- 不需要配置写回（配置改在容器/启动侧；传输通道的新增删除在「传输管理」页做）
+- 不需要配置写回（配置改在容器/启动侧；通道的新增、修改与删除在「通道管理」页做）
 
 ## 关键 UX 细节
 

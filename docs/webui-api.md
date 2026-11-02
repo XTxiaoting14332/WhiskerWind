@@ -36,7 +36,7 @@ python3 -m qqcache serve \
 
 鉴权：设置 `--access-token` 后，HTTP/WS 请求需带 `?access_token=` 或 `Authorization: Bearer <token>`；事件 POST 带 `Authorization` 头，配了 `--post-secret` 时带 `X-Signature: sha1=<hmac-sha1(body)>`。
 
-**管理面强制鉴权**：`get_logs` / `list_transports` / `add_transport` / `del_transport` 四个管理 action 和 `/logs/stream` 端点，在 `--access-token` **未配置时一律拒绝**（1403/403）——日志和传输控制是敏感面，不允许裸奔。部署 WebUI 必须配 token。
+**管理面强制鉴权**：`get_logs` / `list_transports` / `add_transport` / `update_transport` / `get_transport_token` / `del_transport` 等管理 action 和 `/logs/stream` 端点，在 `--access-token` **未配置时一律拒绝**（1403/403）——日志和通道控制是敏感面，不允许裸奔。部署 WebUI 必须配 token。
 
 ### A.1 HTTP API
 
@@ -79,6 +79,8 @@ retcode 约定：`0` 成功；`1400` 参数错误/动作执行失败；`1403` �
 | `list_transports` ⚠🔒 | — | `{transports: [传输对象...]}` | 见 A.5 |
 | `add_transport` ⚠🔒 | `type` + 各类型参数 | `{id, transports}` | 见 A.5 |
 | `del_transport` ⚠🔒 | `id` | `{transports}` | 仅可删 `source=runtime` |
+| `update_transport` ⚠🔒 | `id` + 要修改的字段 | `{id, transports}` | 仅可改 `source=runtime` |
+| `get_transport_token` ⚠🔒 | `id` | `{token}` | 读取通道的独立令牌 |
 
 成员对象：`{group_id, user_id, nickname, card, sex, age, area, join_time, last_sent_time, level, role, title, ...}`
 
@@ -193,7 +195,7 @@ retcode 约定：`0` 成功；`1400` 参数错误/动作执行失败；`1403` �
 11. **`#ww` 测试触发器**：`--test-trigger`（env `QQCACHE_TEST_TRIGGER`，**默认关**）开启后，任何会话里收到内容恰为 `#ww` 的消息（含 bot 自己手机端发出的）会原地回复一条服务状态（版本/平台/运行时长）。用于验证「通知→读消息→回消息」全链路是否活着。
 12. **打开会话的盲区已用轮询补上**：QQ 对**当前打开的会话**不发桌面通知，所以服务每 `--poll-interval` 秒（默认 2s，env `QQCACHE_POLL_INTERVAL`，0 关闭）轮询一次当前打开的会话。代价是每 tick 一次 a11y 读取；消息到事件的延迟上限 ≈ 轮询间隔。免打扰会话仍然永远收不到（它们既不通知也不会被主动打开）。
 
-### A.5 管理接口：日志 + 传输管理
+### A.5 管理接口：日志 + 通道管理
 
 均为自定义扩展，**必须配置 `--access-token`**，未配置时返回 1403/403。所有 action 走 `POST /<action>`（和正向/反向 WS 请求格式一致）。
 
@@ -224,39 +226,49 @@ retcode 约定：`0` 成功；`1400` 参数错误/动作执行失败；`1403` �
 
 25s 无新记录会发 ws ping 保活。断线重连用 `after=<最后收到的seq>` 回放即可补缺口（`get_logs` 同理）。`access_token` 可放 query 或 `Authorization` 头。
 
-#### 传输管理
+#### 通道管理
 
-传输 = 服务的网络通道，三种类型：
+通道 = 协议端对外的一个连接端点。所有协议的通道统一管理：
 
-| type | 作用 | add_transport 参数 | 状态字段 |
-|---|---|---|---|
-| `http` | API 监听端口（HTTP + 正向 WS 同端口） | `host`（默认 127.0.0.1）、`port` | `listening` |
-| `ws_reverse` | 反向 WS 客户端（连框架 universal 端点） | `url`、`token?` | `connecting`/`connected` |
-| `http_post` | 事件 POST 上报地址 | `url` | `active` |
+| type | 协议 | 作用 | 参数 | 状态 |
+|---|---|---|---|---|
+| `http` | OneBot v11 | API 监听端口（HTTP + 正向 WS 同端口），使用全局 access_token | `host`（默认 127.0.0.1）、`port` | `listening` |
+| `ws_reverse` | OneBot v11 | 反向 WS 客户端（连框架 universal 端点） | `url`、`token?` | `connecting`/`connected` |
+| `http_post` | OneBot v11 | 事件 POST 上报地址 | `url` | `active` |
+| `satori` | Satori | Satori 服务端（`/v1` + `/v1/events`） | `host`（默认 0.0.0.0）、`port`（默认 5500）、`token?`、`platform?`（默认 qq） | `listening` |
+| `automatic` | automatic | automatic 服务端（`/automatic/v1`） | `host`（默认 0.0.0.0）、`port`（默认 5600）、`token?` | `listening` |
+| `automatic_reverse` | automatic | automatic 反向 WS 客户端 | `url`、`token?` | `connecting`/`connected` |
 
-**`list_transports`** → `{transports: [...]}`，传输对象：
+**`list_transports`** → `{transports: [...]}`，通道对象：
 
 ```json
 {
-  "id": "t3", "type": "http", "source": "runtime",
-  "created_at": 1793278201,
-  "address": "0.0.0.0:5701",
-  "http_url": "http://0.0.0.0:5701/", "ws_url": "ws://0.0.0.0:5701/",
-  "status": "listening"
+  "id": "t4", "type": "satori", "protocol": "satori", "title": "Satori 服务端",
+  "source": "runtime", "created_at": 1793278201,
+  "host": "0.0.0.0", "port": 5500, "platform": "qq",
+  "address": "0.0.0.0:5500", "endpoint": "http://0.0.0.0:5500/v1",
+  "status": "listening", "clients": 1, "webhooks": 0, "token_set": true
 }
 ```
 
-**`add_transport`** → `{id: "t3", transports: [...]}`（顺带返回全量列表）
+**`add_transport {type, ...}`** → `{id: "t4", transports: [...]}`（顺带返回全量列表）
+
+**`update_transport {id, <字段>..., regenerate_token?}`** → `{id, transports}`：原地修改，id 不变。新配置启动失败时恢复旧配置并返回错误。
+
+**`get_transport_token {id}`** → `{token}`：读取通道的独立令牌（`ws_reverse`、`satori`、`automatic`、`automatic_reverse`）。列表中只给出 `token_set`，不含令牌明文。
 
 **`del_transport {id}`** → `{transports: [...]}`
 
 语义：
 
-- `source`：`startup`（启动参数 `--host/--post-url/--ws-reverse-url` 配置的，**不可经 API 删除**，防自断通道）/ `runtime`（API 创建的）
-- `runtime` 传输**持久化**到 `<db>.transports.json`（0600），服务重启自动恢复；`ws_reverse` 的 `token` 也会持久化（明文落盘，注意安全边界）
+- `source`：`startup`（启动参数或环境变量 `QQCACHE_POST_URL` / `QQCACHE_WS_REVERSE_URL` 配置的，**不可经 API 修改或删除**，防自断通道）/ `runtime`（API 创建的）
+- `runtime` 通道**持久化**到 `<db>.transports.json`（0600），服务重启自动恢复；令牌也会持久化（明文落盘，注意安全边界）
+- 令牌规则：`satori` 与 `automatic` 监听非回环地址时必须有令牌——未提供时自动生成，显式传空字符串返回 1400
+- 每条 Satori / automatic 通道是独立的适配器实例，事件序号（`sn` / `seq`）各自独立；Satori 通过 `meta/webhook.create` 注册的 WebHook 保存在对应通道中
 - `http_post` 去重：已在生效的 url 再 `add_transport` 返回 1400
 - 删除 `http` 监听只关端口——已建立的 ws 连接不受影响（活到对端断开或进程退出）
-- 删除 `ws_reverse` 会断开当前连接并停止重连
+- 删除反向 WS 类通道会断开当前连接并停止重连
+- 旧版本的 `<db>.protocols.json`（每个协议一份配置）在启动时自动迁移为通道，原文件改名为 `.migrated`；只迁移已启用的协议
 
 ---
 
@@ -304,11 +316,18 @@ GET  /api/logs?tail=200&after=<seq>&level=warning
   → { logs: [...], latest_seq }        （透传 get_logs；前端轮询补增量）
 
 GET  /api/transports
-  → { transports: [...] }              （透传 list_transports）
+  → [ ...通道对象 ]                     （透传 list_transports）
 
 POST /api/transports
-  body: {type:"http", host, port} | {type:"ws_reverse", url, token?} | {type:"http_post", url}
+  body: {type, host?, port?, url?, token?, platform?}（字段见 A.5 通道类型表）
   → { id, transports }
+
+PATCH /api/transports/{id}
+  body: 要修改的字段，或 {regenerate_token: true}
+  → { id, transports }
+
+GET  /api/transports/{id}/token
+  → { token }                          （只在用户点「显示」「复制」时请求）
 
 DELETE /api/transports/{id}
   → { transports }

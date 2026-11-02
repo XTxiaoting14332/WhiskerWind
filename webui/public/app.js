@@ -17,7 +17,7 @@ const THEME_KEY = 'qqcache_webui_theme';
 // 构建版本：必须与 index.html 的 <meta name="ww-build"> 一致。
 // 浏览器缓存可能混装新旧 index.html/app.js（旧 navTo 会导致导航失灵），
 // 握手不匹配时强制重载一次自愈；sessionStorage 标记防止重载死循环。
-const WW_BUILD = 'ww16';
+const WW_BUILD = 'ww17';
 
 function enforceBuildVersion() {
   try {
@@ -161,7 +161,7 @@ function applyTheme(theme) {
 const VIEW_TITLES = {
   overview: '运行概览',
   events: '事件日志',
-  transports: '传输管理',
+  transports: '通道管理',
   logs: '服务日志',
   settings: '状态与设置',
 };
@@ -194,7 +194,7 @@ function navTo(viewName) {
   // Trigger view data refresh
   if (viewName === 'overview') loadOverview();
   else if (viewName === 'events') loadEvents();
-  else if (viewName === 'transports') { loadTransports(); loadProtocols(); }
+  else if (viewName === 'transports') { loadTransports(); }
   else if (viewName === 'logs') loadLogs();
   else if (viewName === 'settings') loadSettings();
 }
@@ -1197,105 +1197,281 @@ function initEventControls() {
 // ----------------------------------------------------------------------------
 // 4. Transports Management Logic
 // ----------------------------------------------------------------------------
+// 通道类型：协议、显示名、表单字段、说明
+const CHANNEL_TYPES = {
+  http: {
+    protocol: 'onebot11', title: 'HTTP 监听', fields: ['host', 'port'],
+    defaults: { host: '127.0.0.1', port: 5701 },
+    hint: 'HTTP API 与正向 WebSocket 共用此端口，使用全局 access_token 鉴权。',
+  },
+  ws_reverse: {
+    protocol: 'onebot11', title: '反向 WebSocket', fields: ['url', 'token'],
+    placeholder: 'ws://127.0.0.1:8080/onebot/v11/ws',
+    hint: '协议端主动连接框架的 Universal 端点。容器使用 bridge 网络时，宿主机地址请填 <code>host.docker.internal</code>。',
+    tokenHint: '连接时以 <code>Authorization: Bearer</code> 头发送；留空则不发送。',
+  },
+  http_post: {
+    protocol: 'onebot11', title: 'HTTP POST 上报', fields: ['url'],
+    placeholder: 'http://127.0.0.1:8080/onebot/v11/http',
+    hint: '事件以 HTTP POST 推送到该地址，不支持快速操作。',
+  },
+  satori: {
+    protocol: 'satori', title: 'Satori 服务端', fields: ['host', 'port', 'platform', 'token'],
+    defaults: { host: '0.0.0.0', port: 5500, platform: 'qq' },
+    hint: 'HTTP API 位于 <code>/v1</code>，事件 WebSocket 位于 <code>/v1/events</code>。platform 供 Koishi 等框架识别平台。',
+    tokenHint: '监听非回环地址时必须设置令牌，留空将自动生成。',
+  },
+  automatic: {
+    protocol: 'automatic', title: 'automatic 服务端', fields: ['host', 'port', 'token'],
+    defaults: { host: '0.0.0.0', port: 5600 },
+    hint: '正向 WebSocket 位于 <code>/automatic/v1</code>，HTTP 调用为 <code>POST /automatic/v1/&lt;action&gt;</code>。',
+    tokenHint: '监听非回环地址时必须设置令牌，留空将自动生成。',
+  },
+  automatic_reverse: {
+    protocol: 'automatic', title: 'automatic 反向 WebSocket', fields: ['url', 'token'],
+    placeholder: 'ws://127.0.0.1:8090/automatic',
+    hint: '协议端主动连接该地址，连接建立后与正向 WebSocket 行为相同。',
+    tokenHint: '连接时以 <code>Authorization: Bearer</code> 头发送；留空则不发送。',
+  },
+};
+const PROTOCOL_TITLES = { onebot11: 'OneBot v11', satori: 'Satori', automatic: 'automatic' };
+const STATUS_TEXT = { listening: '监听中', connected: '已连接', connecting: '连接中', active: '启用' };
+
+let transportsCache = [];
+
 async function loadTransports() {
   const tbody = $('#transportsTableBody');
-  tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;color:var(--muted)">加载中…</td></tr>`;
-
   try {
-    const list = await api('/api/transports');
-    if (!list || list.length === 0) {
-      tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;color:var(--muted)">无传输通道</td></tr>`;
-      return;
-    }
-
-    tbody.innerHTML = list.map((t) => {
-      const isStartup = t.source === 'startup';
-      const typeBadge = `<span class="badge ${t.type === 'http' ? 'badge-blue' : (t.type === 'ws_reverse' ? 'badge-amber' : 'badge-green')}">${escapeHtml(t.type)}</span>`;
-      const sourceBadge = `<span class="badge ${isStartup ? 'badge-gray' : 'badge-green'}">${escapeHtml(t.source || 'runtime')}</span>`;
-      const statusBadge = `<span class="badge ${t.status === 'listening' || t.status === 'connected' || t.status === 'active' ? 'badge-green' : 'badge-amber'}">${escapeHtml(t.status || '')}</span>`;
-
-      return `
-        <tr>
-          <td style="font-family:var(--font-mono);font-weight:600">${escapeHtml(t.id)}</td>
-          <td>${typeBadge}</td>
-          <td>${sourceBadge}</td>
-          <td style="font-family:var(--font-mono);font-size:12px">${escapeHtml(t.address || t.url || t.http_url || '')}</td>
-          <td>${statusBadge}</td>
-          <td style="text-align:right">
-            <button class="btn btn-secondary btn-sm"
-              ${isStartup ? 'disabled title="启动参数配置，不可删除"' : `onclick="deleteTransport('${t.id}')"`}>
-              删除
-            </button>
-          </td>
-        </tr>
-      `;
-    }).join('');
+    transportsCache = await api('/api/transports') || [];
+    renderTransports();
   } catch (err) {
     tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;color:var(--accent-red)">加载失败: ${escapeHtml(err.message)}</td></tr>`;
   }
 }
 
-async function deleteTransport(id) {
-  if (!confirm(`确定要删除传输通道 ${id} 吗？`)) return;
+function renderTransports() {
+  const tbody = $('#transportsTableBody');
+  const list = transportsCache;
+  if (!list.length) {
+    tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;color:var(--muted)">无通道</td></tr>`;
+    return;
+  }
+  const protoBadge = { onebot11: 'badge-blue', satori: 'badge-amber', automatic: 'badge-green' };
+  tbody.innerHTML = list.map((t) => {
+    const isStartup = t.source === 'startup';
+    const ok = ['listening', 'connected', 'active'].includes(t.status);
+    let status = `<span class="badge ${ok ? 'badge-green' : 'badge-amber'}">${escapeHtml(STATUS_TEXT[t.status] || t.status || '')}</span>`;
+    if (t.type === 'satori' || t.type === 'automatic') {
+      status += ` <span style="color:var(--muted);font-size:12px">${t.clients ?? 0} 个客户端</span>`;
+    }
+    const startupBadge = isStartup ? ' <span class="badge badge-gray" title="由容器环境变量配置">启动参数</span>' : '';
+    const sub = t.endpoint
+      ? `<div style="color:var(--muted);font-size:11.5px;margin-top:2px">${escapeHtml(t.endpoint)}${t.type === 'satori' && t.webhooks ? ` · WebHook ${t.webhooks} 个` : ''}</div>`
+      : '';
+    return `
+      <tr>
+        <td style="font-family:var(--font-mono);font-weight:600">${escapeHtml(t.id)}</td>
+        <td><span class="badge ${protoBadge[t.protocol] || 'badge-gray'}">${escapeHtml(PROTOCOL_TITLES[t.protocol] || t.protocol || '')}</span></td>
+        <td>${escapeHtml(t.title || t.type)}${startupBadge}</td>
+        <td style="font-family:var(--font-mono);font-size:12px;word-break:break-all">${escapeHtml(t.address || '')}${sub}</td>
+        <td>${status}</td>
+        <td style="text-align:right;white-space:nowrap">
+          <button class="btn btn-secondary btn-sm" ${isStartup ? 'disabled title="启动参数配置的通道不能修改"' : `onclick="openChannelModal('${escapeHtml(t.id)}')"`}>编辑</button>
+          <button class="btn btn-secondary btn-sm" ${isStartup ? 'disabled title="启动参数配置的通道不能删除"' : `onclick="deleteTransport('${escapeHtml(t.id)}')"`}>删除</button>
+        </td>
+      </tr>`;
+  }).join('');
+}
 
+async function deleteTransport(id) {
+  if (!confirm(`确定要删除通道 ${id} 吗？`)) return;
   try {
-    await api(`/api/transports/${id}`, { method: 'DELETE' });
-    showToast(`传输通道 ${id} 已删除`);
+    await api(`/api/transports/${encodeURIComponent(id)}`, { method: 'DELETE' });
+    showToast(`通道 ${id} 已删除`);
     loadTransports();
   } catch (err) {
-    showToast('删除失败: ' + err.message);
+    showToast('删除失败: ' + err.message, 'error');
   }
 }
 
+// 弹窗状态：editing 为正在编辑的通道（新建时为 null）
+const channelModal = { editing: null, tokenLoaded: true, tokenDirty: false };
+
+function fillTypeOptions(protocol, selected) {
+  const sel = $('#transTypeSelect');
+  sel.innerHTML = Object.entries(CHANNEL_TYPES)
+    .filter(([, d]) => d.protocol === protocol)
+    .map(([k, d]) => `<option value="${k}" ${k === selected ? 'selected' : ''}>${escapeHtml(d.title)}</option>`)
+    .join('');
+}
+
+function applyChannelType(type, values = {}) {
+  const def = CHANNEL_TYPES[type];
+  const editing = channelModal.editing;
+  $('#chHint').innerHTML = def.hint || '';
+  document.querySelectorAll('#formAddTransport [data-field]').forEach((g) => {
+    g.style.display = def.fields.includes(g.dataset.field) ? '' : 'none';
+  });
+  const v = { ...(def.defaults || {}), ...values };
+  $('#chHost').value = v.host ?? '';
+  $('#chPort').value = v.port ?? '';
+  $('#chUrl').value = v.url ?? '';
+  $('#chUrl').placeholder = def.placeholder || '';
+  $('#chPlatform').value = v.platform ?? '';
+  const tok = $('#chToken');
+  tok.value = '';
+  tok.type = 'password';
+  $('#chTokenShow').textContent = '显示';
+  const tokenSet = !!(editing && editing.token_set);
+  tok.placeholder = tokenSet ? '已设置（点「显示」查看）' : '未设置';
+  channelModal.tokenLoaded = !tokenSet;
+  channelModal.tokenDirty = false;
+  $('#chTokenHint').innerHTML = def.tokenHint || '';
+  // 新建时令牌由用户填写或留空自动生成；编辑时才有可查看、复制的已有令牌
+  $('#chTokenCopy').style.display = editing ? '' : 'none';
+  $('#chTokenRegen').style.display = editing ? '' : 'none';
+}
+
+function openChannelModal(id) {
+  const t = id ? transportsCache.find((x) => x.id === id) : null;
+  channelModal.editing = t || null;
+  $('#chModalTitle').textContent = t ? `编辑通道 ${t.id}` : '新建通道';
+  $('#btnSubmitAddTransport').textContent = t ? '保存' : '创建';
+  $('#chProtocol').disabled = !!t;
+  $('#transTypeSelect').disabled = !!t;
+  const type = t ? t.type : 'http';
+  $('#chProtocol').value = CHANNEL_TYPES[type].protocol;
+  fillTypeOptions(CHANNEL_TYPES[type].protocol, type);
+  applyChannelType(type, t || {});
+  $('#modalAddTransport').classList.add('show');
+}
+
+function closeChannelModal() {
+  $('#modalAddTransport').classList.remove('show');
+  channelModal.editing = null;
+}
+
+async function loadChannelToken() {
+  const tok = $('#chToken');
+  if (channelModal.tokenLoaded) return tok.value;
+  const t = await api(`/api/transports/${encodeURIComponent(channelModal.editing.id)}/token`);
+  tok.value = t.token || '';
+  channelModal.tokenLoaded = true;
+  return tok.value;
+}
+
 function initTransportsControls() {
-  $('#btnOpenAddTransportModal').onclick = () => {
-    $('#modalAddTransport').classList.add('show');
-  };
+  $('#btnOpenAddTransportModal').onclick = () => openChannelModal(null);
+  $('#btnRefreshTransports').onclick = loadTransports;
+  $('#btnCloseAddTransportModal').onclick = closeChannelModal;
+  $('#btnCancelAddTransport').onclick = closeChannelModal;
 
-  $('#btnCloseAddTransportModal').onclick = () => {
-    $('#modalAddTransport').classList.remove('show');
+  $('#chProtocol').onchange = (e) => {
+    fillTypeOptions(e.target.value);
+    applyChannelType($('#transTypeSelect').value);
   };
+  $('#transTypeSelect').onchange = (e) => applyChannelType(e.target.value);
 
-  $('#btnCancelAddTransport').onclick = () => {
-    $('#modalAddTransport').classList.remove('show');
+  $('#chToken').oninput = () => {
+    channelModal.tokenDirty = true;
+    channelModal.tokenLoaded = true;
   };
-
-  $('#transTypeSelect').onchange = (e) => {
-    const val = e.target.value;
-    $('#fieldsHttp').style.display = val === 'http' ? 'block' : 'none';
-    $('#fieldsWsReverse').style.display = val === 'ws_reverse' ? 'block' : 'none';
-    $('#fieldsHttpPost').style.display = val === 'http_post' ? 'block' : 'none';
+  $('#chTokenShow').onclick = async () => {
+    const tok = $('#chToken');
+    try {
+      if (tok.type === 'password') {
+        await loadChannelToken();
+        tok.type = 'text';
+        $('#chTokenShow').textContent = '隐藏';
+      } else {
+        tok.type = 'password';
+        $('#chTokenShow').textContent = '显示';
+      }
+    } catch (err) {
+      showToast('获取令牌失败: ' + err.message, 'error');
+    }
+  };
+  $('#chTokenCopy').onclick = async () => {
+    try {
+      const t = await loadChannelToken();
+      if (!t) {
+        showToast('令牌为空，没有可复制的内容', 'error');
+        return;
+      }
+      await copyText(t);
+      showToast('令牌已复制');
+    } catch (err) {
+      showToast('复制失败: ' + err.message, 'error');
+    }
+  };
+  $('#chTokenRegen').onclick = async () => {
+    const t = channelModal.editing;
+    if (!t || !confirm('生成新令牌后，使用旧令牌的客户端需要更新配置。确定继续吗？')) return;
+    try {
+      const data = await api(`/api/transports/${encodeURIComponent(t.id)}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ regenerate_token: true }),
+      });
+      transportsCache = data.transports || transportsCache;
+      renderTransports();
+      channelModal.editing = transportsCache.find((x) => x.id === t.id) || t;
+      channelModal.tokenLoaded = false;
+      $('#chToken').value = '';
+      $('#chToken').placeholder = '已设置（点「显示」查看）';
+      showToast('已生成新令牌，点「显示」或「复制」获取');
+    } catch (err) {
+      showToast('生成失败: ' + err.message, 'error');
+    }
   };
 
   $('#formAddTransport').onsubmit = async (e) => {
     e.preventDefault();
-    const type = $('#transTypeSelect').value;
-    const payload = { type };
-
-    if (type === 'http') {
-      payload.host = $('#transHttpHost').value.trim() || '127.0.0.1';
-      payload.port = parseInt($('#transHttpPort').value.trim(), 10);
-    } else if (type === 'ws_reverse') {
-      payload.url = $('#transWsUrl').value.trim();
-      payload.token = $('#transWsToken').value.trim();
-    } else if (type === 'http_post') {
-      payload.url = $('#transPostUrl').value.trim();
+    const editing = channelModal.editing;
+    const type = editing ? editing.type : $('#transTypeSelect').value;
+    const def = CHANNEL_TYPES[type];
+    const payload = editing ? {} : { type };
+    if (def.fields.includes('host')) payload.host = $('#chHost').value.trim();
+    if (def.fields.includes('port')) payload.port = parseInt($('#chPort').value.trim(), 10);
+    if (def.fields.includes('url')) payload.url = $('#chUrl').value.trim();
+    if (def.fields.includes('platform')) payload.platform = $('#chPlatform').value.trim();
+    if (def.fields.includes('token') && (!editing || channelModal.tokenDirty)) {
+      const t = $('#chToken').value.trim();
+      if (editing && !t && editing.token_set
+          && !confirm('令牌为空将关闭鉴权，仅在监听 127.0.0.1 或反向连接时允许。确定继续吗？')) return;
+      if (t || editing) payload.token = t;
     }
-
     try {
-      await api('/api/transports', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const data = await api(editing ? `/api/transports/${encodeURIComponent(editing.id)}` : '/api/transports', {
+        method: editing ? 'PATCH' : 'POST',
         body: JSON.stringify(payload),
       });
-
-      showToast('传输通道创建成功');
-      $('#modalAddTransport').classList.remove('show');
-      loadTransports();
+      transportsCache = data.transports || transportsCache;
+      renderTransports();
+      closeChannelModal();
+      showToast(editing ? '通道已保存' : `通道 ${data.id} 已创建`);
     } catch (err) {
-      showToast('创建失败: ' + err.message);
+      showToast((editing ? '保存失败: ' : '创建失败: ') + err.message, 'error');
     }
   };
+}
+
+// navigator.clipboard 只在安全上下文（https / localhost）可用；用局域网 IP
+// 打开 WebUI 时退回 execCommand
+async function copyText(text) {
+  if (navigator.clipboard && window.isSecureContext) {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  ta.setAttribute('readonly', '');
+  ta.style.position = 'fixed';
+  ta.style.opacity = '0';
+  document.body.appendChild(ta);
+  ta.select();
+  const ok = document.execCommand('copy');
+  ta.remove();
+  if (!ok) throw new Error('浏览器不允许复制');
 }
 
 // ----------------------------------------------------------------------------
@@ -1424,182 +1600,6 @@ async function loadSettings() {
   } catch (err) {
     container.innerHTML = `<div style="color:var(--accent-red)">获取状态失败: ${escapeHtml(err.message)}</div>`;
   }
-}
-
-// ----------------------------------------------------------------------------
-// Satori / automatic 协议管理（启停、端口、令牌）
-// ----------------------------------------------------------------------------
-async function loadProtocols() {
-  const box = $('#protocolsContainer');
-  if (!box) return;
-  try {
-    const data = await api('/api/protocols');
-    renderProtocols(data.protocols || []);
-  } catch (err) {
-    box.innerHTML = `<div style="color:var(--accent-red)">获取协议列表失败: ${escapeHtml(err.message)}</div>`;
-  }
-}
-
-const PROTO_HINTS = {
-  satori: (p) => `接入地址：<code>http://&lt;主机&gt;:${escapeHtml(String(p.port))}/v1</code>（事件 WebSocket <code>/v1/events</code>）。platform 供 Koishi 等框架识别平台，默认为 qq。`,
-  automatic: (p) => `正向 WebSocket：<code>ws://&lt;主机&gt;:${escapeHtml(String(p.port))}/automatic/v1</code>；HTTP 调用 <code>POST /automatic/v1/&lt;action&gt;</code>。`,
-};
-
-function p_token_set(name, list) {
-  return !!(list.find((x) => x.name === name) || {}).token_set;
-}
-
-// navigator.clipboard 只在安全上下文（https / localhost）可用；用局域网 IP
-// 打开 WebUI 时退回 execCommand
-async function copyText(text) {
-  if (navigator.clipboard && window.isSecureContext) {
-    await navigator.clipboard.writeText(text);
-    return;
-  }
-  const ta = document.createElement('textarea');
-  ta.value = text;
-  ta.setAttribute('readonly', '');
-  ta.style.position = 'fixed';
-  ta.style.opacity = '0';
-  document.body.appendChild(ta);
-  ta.select();
-  const ok = document.execCommand('copy');
-  ta.remove();
-  if (!ok) throw new Error('浏览器不允许复制');
-}
-
-function renderProtocols(list) {
-  const box = $('#protocolsContainer');
-  // OneBot v11 的传输通道在同页上方的表格中管理，这里只列可启停的协议
-  box.innerHTML = list.filter((p) => !p.fixed).map((p) => {
-    const badge = p.running
-      ? '<span class="badge badge-green">运行中</span>'
-      : '<span class="badge badge-gray">未启用</span>';
-    if (p.fixed) {
-      return `
-        <div class="proto-item">
-          <div class="proto-head">
-            <strong>${escapeHtml(p.title)}</strong>
-            <span class="badge badge-green">常驻</span>
-          </div>
-          <div class="proto-note">${escapeHtml(p.note || '')}</div>
-        </div>`;
-    }
-    const stats = p.running
-      ? `<div class="proto-note">已连接客户端 ${p.clients ?? 0} · WebHook ${p.webhooks?.length ?? 0} 个 · 事件序号 ${p.sn ?? 0}</div>`
-      : '';
-    return `
-      <div class="proto-item" data-proto="${escapeHtml(p.name)}">
-        <div class="proto-head">
-          <strong>${escapeHtml(p.title)}</strong>
-          <div style="display:flex;align-items:center;gap:12px">
-            ${badge}
-            <label class="toggle-switch">
-              <input type="checkbox" class="proto-enable" ${p.enabled ? 'checked' : ''}>
-              <span class="slider"></span>
-            </label>
-          </div>
-        </div>
-        <div class="proto-grid">
-          <label>监听地址<input class="input proto-host" value="${escapeHtml(p.host || '')}"></label>
-          <label>端口<input class="input proto-port" type="number" min="1" max="65535" value="${escapeHtml(String(p.port ?? ''))}"></label>
-          ${'platform' in p ? `<label>platform<input class="input proto-platform" value="${escapeHtml(p.platform || '')}"></label>` : '<span></span>'}
-        </div>
-        ${'reverse_urls' in p ? `<label class="proto-wide">反向 WebSocket
-          <textarea class="input proto-reverse" rows="2" placeholder="每行一个地址，例如 ws://127.0.0.1:8090/automatic">${escapeHtml((p.reverse_urls || []).join('\n'))}</textarea></label>` : ''}
-        <div class="proto-token">
-          <span>令牌</span>
-          <input class="input proto-token-input" type="password" autocomplete="new-password" spellcheck="false"
-                 placeholder="${p.token_set ? '已设置（点「显示」查看）' : '未设置（不鉴权，仅限监听 127.0.0.1）'}">
-          <button class="btn btn-secondary btn-sm proto-token-show" type="button">显示</button>
-          <button class="btn btn-secondary btn-sm proto-token-copy" type="button">复制</button>
-          <button class="btn btn-secondary btn-sm proto-token-regen" type="button">随机生成</button>
-        </div>
-        <div class="proto-note">${PROTO_HINTS[p.name] ? PROTO_HINTS[p.name](p) : ''}</div>
-        ${stats}
-        <div style="margin-top:10px"><button class="btn btn-primary btn-sm proto-save">保存配置</button></div>
-      </div>`;
-  }).join('');
-
-  box.querySelectorAll('.proto-item[data-proto]').forEach((el) => {
-    const name = el.dataset.proto;
-    const save = async (changes, okMsg) => {
-      try {
-        const data = await api(`/api/protocols/${encodeURIComponent(name)}`, {
-          method: 'POST',
-          body: JSON.stringify(changes),
-        });
-        renderProtocols(data.protocols || []);
-        showToast(okMsg);
-      } catch (err) {
-        showToast('操作失败: ' + err.message, 'error');
-        loadProtocols();
-      }
-    };
-    el.querySelector('.proto-enable').onchange = (e) => {
-      save({ enabled: e.target.checked }, e.target.checked ? '已启用' : '已停用');
-    };
-    const tokenInput = el.querySelector('.proto-token-input');
-    let tokenLoaded = !p_token_set(name, list);   // 没设过令牌就没什么可加载的
-    let tokenDirty = false;
-    tokenInput.oninput = () => { tokenDirty = true; tokenLoaded = true; };
-    const loadToken = async () => {
-      if (tokenLoaded) return tokenInput.value;
-      const t = await api(`/api/protocols/${encodeURIComponent(name)}/token`);
-      tokenInput.value = t.token || '';
-      tokenLoaded = true;
-      return tokenInput.value;
-    };
-    const showBtn = el.querySelector('.proto-token-show');
-    showBtn.onclick = async () => {
-      try {
-        if (tokenInput.type === 'password') {
-          await loadToken();
-          tokenInput.type = 'text';
-          showBtn.textContent = '隐藏';
-        } else {
-          tokenInput.type = 'password';
-          showBtn.textContent = '显示';
-        }
-      } catch (err) {
-        showToast('获取令牌失败: ' + err.message, 'error');
-      }
-    };
-    el.querySelector('.proto-token-copy').onclick = async () => {
-      try {
-        const t = await loadToken();
-        if (!t) {
-          showToast('令牌为空，没有可复制的内容', 'error');
-          return;
-        }
-        await copyText(t);
-        showToast('令牌已复制');
-      } catch (err) {
-        showToast('复制失败: ' + err.message, 'error');
-      }
-    };
-
-    el.querySelector('.proto-save').onclick = () => {
-      const changes = {
-        host: el.querySelector('.proto-host').value.trim(),
-        port: Number(el.querySelector('.proto-port').value),
-      };
-      const plat = el.querySelector('.proto-platform');
-      if (plat) changes.platform = plat.value.trim();
-      const rev = el.querySelector('.proto-reverse');
-      if (rev) changes.reverse_urls = rev.value.split('\n').map((u) => u.trim()).filter(Boolean);
-      if (tokenDirty) {
-        const t = tokenInput.value.trim();
-        if (!t && !confirm('令牌为空将关闭鉴权，仅在监听 127.0.0.1 时允许。确定继续吗？')) return;
-        changes.token = t;
-      }
-      save(changes, '配置已保存');
-    };
-    el.querySelector('.proto-token-regen').onclick = () => {
-      if (!confirm('生成新令牌后，使用旧令牌的客户端需要更新配置。确定继续吗？')) return;
-      save({ regenerate_token: true }, '已生成新令牌，点「显示」或「复制」获取');
-    };
-  });
 }
 
 function renderLoginStateCard(statusData) {
@@ -1795,8 +1795,6 @@ function initSettingsControls() {
     });
   }
 
-  const protoRefresh = $('#btnRefreshProtocols');
-  if (protoRefresh) protoRefresh.onclick = loadProtocols;
 
   const stBtn = $('#btnRunSelftest');
   if (stBtn) {

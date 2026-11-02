@@ -246,11 +246,9 @@ class Bridge:
             media_root=self.nt_data, routes=self.http_routes(),
             access_token=token, log_buffer=self.logbuf, self_id=self.self_id,
             specs_path=None if db_path == ":memory:" else db_path + ".transports.json",
+            bridge=self,
+            legacy_protocols_path=None if db_path == ":memory:" else db_path + ".protocols.json",
         )
-        from .protocols import ProtocolManager
-
-        self.protocol_mgr = ProtocolManager(
-            self, path=None if db_path == ":memory:" else db_path + ".protocols.json")
 
     def publish(self, event):
         """Hand a core event to every protocol adapter (see core.ProtocolHub)."""
@@ -1411,28 +1409,30 @@ class Bridge:
         )
         return {"enabled": bool(self.test_trigger)}
 
-    def act_list_protocols(self, p):
-        return {"protocols": self.protocol_mgr.list()}
-
-    def act_set_protocol(self, p):
-        """启停/改配置：{name, enabled?, host?, port?, token?, platform?, regenerate_token?}"""
-        name = str(p.get("name") or "")
-        if not name:
-            raise ApiError(1400, "缺少 name")
-        # HTTP 调用会把 URL 里的 access_token 也并进 params
-        changes = {k: v for k, v in p.items() if k not in ("name", "access_token")}
-        return {"protocols": self.protocol_mgr.update(name, changes)}
-
-    def act_get_protocol_token(self, p):
-        return {"token": self.protocol_mgr.token(str(p.get("name") or ""))}
-
     def act_list_transports(self, p):
         return {"transports": self.transports.list()}
 
+    @staticmethod
+    def _channel_params(p):
+        # HTTP 调用会把 URL 里的 access_token 也并进 params
+        return {k: v for k, v in p.items() if k not in ("id", "access_token")}
+
     def act_add_transport(self, p):
-        """Create a transport. Params: type http/ws_reverse/http_post + spec."""
-        tid = self.transports.add_spec(dict(p))
+        """Create a channel. Params: type (see transports.TYPES) + its fields."""
+        tid = self.transports.add_spec(self._channel_params(p))
         return {"id": tid, "transports": self.transports.list()}
+
+    def act_update_transport(self, p):
+        """Edit a channel in place: {id, <fields>..., regenerate_token?}"""
+        if not p.get("id"):
+            raise ApiError(1400, "缺少 id")
+        tid = self.transports.update(str(p["id"]), self._channel_params(p))
+        return {"id": tid, "transports": self.transports.list()}
+
+    def act_get_transport_token(self, p):
+        if not p.get("id"):
+            raise ApiError(1400, "缺少 id")
+        return {"token": self.transports.token(str(p["id"]))}
 
     def act_del_transport(self, p):
         if not p.get("id"):
@@ -1852,10 +1852,9 @@ ACTIONS = {
     "can_send_record": Bridge.act_can_send_record,
     "get_logs": Bridge.act_get_logs,
     "list_transports": Bridge.act_list_transports,
-    "list_protocols": Bridge.act_list_protocols,
-    "set_protocol": Bridge.act_set_protocol,
-    "get_protocol_token": Bridge.act_get_protocol_token,
     "add_transport": Bridge.act_add_transport,
+    "update_transport": Bridge.act_update_transport,
+    "get_transport_token": Bridge.act_get_transport_token,
     "del_transport": Bridge.act_del_transport,
     "get_test_trigger": Bridge.act_get_test_trigger,
     "set_test_trigger": Bridge.act_set_test_trigger,
@@ -1867,7 +1866,7 @@ ACTIONS = {
 }
 
 ADMIN_ACTIONS = {"get_logs", "list_transports", "add_transport", "del_transport",
-                 "list_protocols", "set_protocol", "get_protocol_token",
+                 "update_transport", "get_transport_token",
                  "set_test_trigger", "set_resolve_first", "set_member_ttl",
                  "run_selftest"}
 

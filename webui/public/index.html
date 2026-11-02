@@ -3,19 +3,19 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-  <meta name="ww-build" content="ww16">
+  <meta name="ww-build" content="ww17">
   <title>WhiskerWind 控制台</title>
-  <link rel="icon" type="image/svg+xml" href="/favicon.svg?v=ww16">
-  <link rel="alternate icon" href="/favicon.ico?v=ww16" sizes="16x16 32x32 48x48">
-  <link rel="apple-touch-icon" href="/apple-touch-icon.png?v=ww16">
-  <link rel="stylesheet" href="/style.css?v=ww16">
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg?v=ww17">
+  <link rel="alternate icon" href="/favicon.ico?v=ww17" sizes="16x16 32x32 48x48">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png?v=ww17">
+  <link rel="stylesheet" href="/style.css?v=ww17">
 </head>
 <body>
 
 <!-- Login Gate View (shown if no session or 401) -->
 <div class="login-wrapper" id="loginModal" style="display:none">
   <div class="login-card">
-    <div class="login-logo brand-mark"><img src="/favicon.svg?v=ww16" alt="夜风"></div>
+    <div class="login-logo brand-mark"><img src="/favicon.svg?v=ww17" alt="夜风"></div>
     <h1 class="login-title">WhiskerWind</h1>
     <p class="login-subtitle">请输入面板访问密码以继续</p>
     <div class="login-error" id="loginError"></div>
@@ -91,7 +91,7 @@
   <!-- Sidebar Navigation Drawer -->
   <aside class="nav-drawer" id="navDrawer">
     <div class="drawer-header">
-      <div class="drawer-logo brand-mark"><img src="/favicon.svg?v=ww16" alt="夜风"></div>
+      <div class="drawer-logo brand-mark"><img src="/favicon.svg?v=ww17" alt="夜风"></div>
       <div class="drawer-title-group">
         <h2>WhiskerWind</h2>
         <span class="brand-badge">Console</span>
@@ -110,7 +110,7 @@
       </button>
       <button class="nav-item" data-v="transports">
         <svg viewBox="0 0 24 24"><path d="M4 11h5V5H4v6zm0 7h5v-6H4v6zm6 0h5v-6h-5v6zm6 0h5v-6h-5v6zm-6-7h5V5h-5v6zm6-6v6h5V5h-5z"/></svg>
-        <span>传输管理</span>
+        <span>通道管理</span>
       </button>
       <button class="nav-item" data-v="logs">
         <svg viewBox="0 0 24 24"><path d="M20 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 14H4V8h16v10zm-2-1h-4v-2h4v2zm0-4h-4v-2h4v2zM6 10h5v5H6z"/></svg>
@@ -430,26 +430,29 @@
           </div>
         </section>
 
-        <!-- ==================== 5. 传输管理 ==================== -->
+        <!-- ==================== 5. 通道管理 ==================== -->
         <section class="view" id="v-transports">
           <div class="card">
             <div class="card-header">
               <h3 class="card-title">
                 <svg viewBox="0 0 24 24"><path d="M4 11h5V5H4v6zm0 7h5v-6H4v6zm6 0h5v-6h-5v6zm6 0h5v-6h-5v6zm-6-7h5V5h-5v6zm6-6v6h5V5h-5z"/></svg>
-                OneBot v11 传输通道
+                通道
               </h3>
-              <button class="btn btn-primary btn-sm" id="btnOpenAddTransportModal">+ 新建传输通道</button>
+              <div style="display:flex;gap:8px">
+                <button class="btn btn-secondary btn-sm" id="btnRefreshTransports">刷新</button>
+                <button class="btn btn-primary btn-sm" id="btnOpenAddTransportModal">+ 新建通道</button>
+              </div>
             </div>
             <div class="table-wrap">
-              <table class="table">
+              <table class="table" style="min-width:820px">
                 <thead>
                   <tr>
-                    <th style="width:70px">ID</th>
-                    <th style="width:120px">类型</th>
-                    <th style="width:100px">来源</th>
-                    <th>地址 / 目标</th>
-                    <th style="width:120px">状态</th>
-                    <th style="width:90px;text-align:right">操作</th>
+                    <th style="width:60px">ID</th>
+                    <th style="width:110px">协议</th>
+                    <th style="width:170px">类型</th>
+                    <th>地址</th>
+                    <th style="width:150px">状态</th>
+                    <th style="width:130px;text-align:right">操作</th>
                   </tr>
                 </thead>
                 <tbody id="transportsTableBody">
@@ -458,24 +461,7 @@
               </table>
             </div>
             <div class="card-footer">
-              <span>说明：startup 来源通道为容器启动参数配置，不可删除；runtime 通道持久化并自动恢复。</span>
-            </div>
-          </div>
-
-          <!-- Protocols Card -->
-          <div class="card">
-            <div class="card-header">
-              <h3 class="card-title">
-                <svg viewBox="0 0 24 24"><path d="M9.4 16.6 4.8 12l4.6-4.6L8 6l-6 6 6 6 1.4-1.4zm5.2 0 4.6-4.6-4.6-4.6L16 6l6 6-6 6-1.4-1.4z"/></svg>
-                Satori / automatic
-              </h3>
-              <button class="btn btn-secondary btn-sm" id="btnRefreshProtocols">刷新</button>
-            </div>
-            <div class="card-body" id="protocolsContainer">
-              <div style="color:var(--muted)">加载协议列表中…</div>
-            </div>
-            <div class="card-footer">
-              <span>启停与配置修改即时生效并自动保存，无需重启服务。</span>
+              <span>新建、修改与删除即时生效并自动保存，无需重启服务。标记为「启动参数」的通道由容器环境变量配置，不能在此修改。</span>
             </div>
           </div>
         </section>
@@ -661,56 +647,55 @@
 <div class="modal-backdrop" id="modalAddTransport">
   <div class="modal-card">
     <div class="modal-header">
-      <h3 style="font-size:15px;font-weight:600">新建传输通道</h3>
+      <h3 style="font-size:15px;font-weight:600" id="chModalTitle">新建通道</h3>
       <button class="btn btn-secondary btn-icon" id="btnCloseAddTransportModal" style="width:26px;height:26px">✕</button>
     </div>
-    <form id="formAddTransport">
+    <form id="formAddTransport" autocomplete="off">
       <div class="modal-body">
-        <div class="form-group">
-          <label class="form-label" for="transTypeSelect">传输类型</label>
-          <select class="select" id="transTypeSelect" required>
-            <option value="http">HTTP 监听 (HTTP API + 正向 WS)</option>
-            <option value="ws_reverse">反向 WS 客户端 (连接外部框架)</option>
-            <option value="http_post">HTTP POST 事件上报</option>
+        <div class="form-group" id="chProtocolGroup">
+          <label class="form-label" for="chProtocol">协议</label>
+          <select class="select" id="chProtocol">
+            <option value="onebot11">OneBot v11</option>
+            <option value="satori">Satori</option>
+            <option value="automatic">automatic</option>
           </select>
         </div>
-
-        <!-- HTTP Fields -->
-        <div id="fieldsHttp">
-          <div class="form-group">
-            <label class="form-label" for="transHttpHost">监听地址 (Host)</label>
-            <input class="input" type="text" id="transHttpHost" value="127.0.0.1" required>
-          </div>
-          <div class="form-group">
-            <label class="form-label" for="transHttpPort">监听端口 (Port)</label>
-            <input class="input" type="number" id="transHttpPort" placeholder="例如 5701" min="1" max="65535" value="5701" required>
-          </div>
+        <div class="form-group" id="chTypeGroup">
+          <label class="form-label" for="transTypeSelect">类型</label>
+          <select class="select" id="transTypeSelect"></select>
         </div>
+        <div class="form-hint" id="chHint"></div>
 
-        <!-- WS Reverse Fields -->
-        <div id="fieldsWsReverse" style="display:none">
-          <div class="form-group">
-            <label class="form-label" for="transWsUrl">WebSocket 目标地址</label>
-            <input class="input" type="text" id="transWsUrl" placeholder="ws://127.0.0.1:8080/onebot/v11/ws">
-          </div>
-          <div class="form-hint">容器使用 host 网络时，宿主机上的框架直接填 <code>127.0.0.1</code>；使用 bridge 网络时请填 <code>host.docker.internal</code>，并让框架监听 <code>0.0.0.0</code>。</div>
-          <div class="form-group">
-            <label class="form-label" for="transWsToken">鉴权 Token (可选)</label>
-            <input class="input" type="text" id="transWsToken" placeholder="可选 Bearer Token">
-          </div>
+        <div class="form-group" data-field="host">
+          <label class="form-label" for="chHost">监听地址</label>
+          <input class="input" type="text" id="chHost" spellcheck="false">
         </div>
-
-        <!-- HTTP Post Fields -->
-        <div id="fieldsHttpPost" style="display:none">
-          <div class="form-group">
-            <label class="form-label" for="transPostUrl">POST 上报 URL</label>
-            <input class="input" type="text" id="transPostUrl" placeholder="http://127.0.0.1:8080/events">
+        <div class="form-group" data-field="port">
+          <label class="form-label" for="chPort">端口</label>
+          <input class="input" type="number" id="chPort" min="1" max="65535">
+        </div>
+        <div class="form-group" data-field="url">
+          <label class="form-label" for="chUrl">目标地址</label>
+          <input class="input" type="text" id="chUrl" spellcheck="false">
+        </div>
+        <div class="form-group" data-field="platform">
+          <label class="form-label" for="chPlatform">platform</label>
+          <input class="input" type="text" id="chPlatform" placeholder="qq" spellcheck="false">
+        </div>
+        <div class="form-group" data-field="token">
+          <label class="form-label" for="chToken">令牌</label>
+          <div class="proto-token" style="margin-top:0">
+            <input class="input proto-token-input" type="password" id="chToken" autocomplete="new-password" spellcheck="false">
+            <button class="btn btn-secondary btn-sm" type="button" id="chTokenShow">显示</button>
+            <button class="btn btn-secondary btn-sm" type="button" id="chTokenCopy">复制</button>
+            <button class="btn btn-secondary btn-sm" type="button" id="chTokenRegen">随机生成</button>
           </div>
+          <div class="form-hint" id="chTokenHint" style="margin-top:6px"></div>
         </div>
       </div>
       <div class="modal-footer">
         <button class="btn btn-secondary" type="button" id="btnCancelAddTransport">取消</button>
-        <button class="btn btn-primary" type="submit" id="btnSubmitAddTransport">创 建</button>
+        <button class="btn btn-primary" type="submit" id="btnSubmitAddTransport">创建</button>
       </div>
     </form>
   </div>
@@ -724,6 +709,6 @@
 <!-- Toast -->
 <div class="toast" id="toast"></div>
 
-<script src="/app.js?v=ww16"></script>
+<script src="/app.js?v=ww17"></script>
 </body>
 </html>

@@ -480,15 +480,18 @@ def cmd_serve(args):
         return 1
     logger.info(f"OneBot v11 HTTP API + 正向 WS: http://{args.host}:{args.port}/  ws://{args.host}:{args.port}/")
     for url in post_urls:
-        bridge.transports.add_post_url(url, source="startup")
-        logger.info(f"事件上报: {url}")
+        try:
+            bridge.transports.add_post_url(url, source="startup")
+        except Exception as exc:  # noqa: BLE001 - 一个地址写错不影响其余通道
+            logger.error(f"事件上报 {url} 未启用: {exc}")
 
     stop = threading.Event()
     for url in ws_reverse_urls:
-        bridge.transports.add_ws_reverse(url, token=args.access_token, source="startup")
-        logger.info(f"反向 WS: {url}")
+        try:
+            bridge.transports.add_ws_reverse(url, token=args.access_token, source="startup")
+        except Exception as exc:  # noqa: BLE001
+            logger.error(f"反向 WS {url} 未启用: {exc}")
     bridge.transports.restore()
-    bridge.protocol_mgr.start_enabled()
 
     # QQ 启动即自动获焦，持焦期间别的会话的通知静默——serve 起来先还焦点
     threading.Timer(5.0, bridge._defocus_when_idle).start()

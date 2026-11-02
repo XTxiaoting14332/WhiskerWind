@@ -17,7 +17,6 @@ import { logsRouter } from './routes/logs.js';
 import { guiRouter } from './routes/gui.js';
 import { ob11Router } from './routes/ob11.js';
 import { settingsRouter } from './routes/settings.js';
-import { protocolsRouter } from './routes/protocols.js';
 
 const app = express();
 const server = http.createServer(app);
@@ -35,7 +34,6 @@ app.use('/api', transportsRouter);
 app.use('/api', logsRouter);
 app.use('/api', guiRouter);
 app.use('/api', settingsRouter);
-app.use('/api', protocolsRouter);
 app.use('/ob11', ob11Router);
 
 // 静态资源：no-cache 让浏览器每次回源校验（未变时 304），

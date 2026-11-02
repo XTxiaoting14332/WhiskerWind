@@ -140,14 +140,16 @@ class AutomaticServer:
     # -- lifecycle --------------------------------------------------------------
 
     def start(self):
-        self._server = ThreadingHTTPServer((self.host, self.port), _make_handler(self))
-        self._server.daemon_threads = True
-        self.port = self._server.server_address[1]
-        threading.Thread(target=self._server.serve_forever, daemon=True).start()
+        # host 为 None 时不监听，只做反向连接（WebUI 中的「automatic 反向 WS」通道）
+        if self.host is not None:
+            self._server = ThreadingHTTPServer((self.host, self.port), _make_handler(self))
+            self._server.daemon_threads = True
+            self.port = self._server.server_address[1]
+            threading.Thread(target=self._server.serve_forever, daemon=True).start()
+            logger.info(f"automatic: ws://{self.host}:{self.port}{BASE}")
         for url in self.reverse_urls:
             threading.Thread(target=self._reverse_loop, args=(url,), daemon=True).start()
-        logger.info(f"automatic: ws://{self.host}:{self.port}{BASE}"
-                    + (f"  反向 {', '.join(self.reverse_urls)}" if self.reverse_urls else ""))
+            logger.info(f"automatic: 反向 WS -> {url}")
         return self
 
     def stop(self):
@@ -162,7 +164,8 @@ class AutomaticServer:
             c.close()
 
     def info(self):
-        return {"port": self.port, "clients": len(self._clients), "seq": self._seq,
+        return {"port": self.port if self._server else None, "clients": len(self._clients),
+                "seq": self._seq,
                 "session": self.session}
 
     # -- entities ---------------------------------------------------------------

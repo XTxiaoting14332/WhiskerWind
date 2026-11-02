@@ -112,8 +112,8 @@ OneBot v11 服务在 `5700` 端口（HTTP API 与正向 WS 同端口），请求
 |---|---|
 | HTTP API | `http://127.0.0.1:5700/<action>` |
 | 正向 WebSocket | `ws://127.0.0.1:5700/` |
-| 反向 WebSocket | 设置 `QQCACHE_WS_REVERSE_URL`，或在 WebUI「传输管理」中添加 |
-| HTTP POST 上报 | 设置 `QQCACHE_POST_URL`，或在 WebUI「传输管理」中添加 |
+| 反向 WebSocket | 设置 `QQCACHE_WS_REVERSE_URL`，或在 WebUI「通道管理」中添加 |
+| HTTP POST 上报 | 设置 `QQCACHE_POST_URL`，或在 WebUI「通道管理」中添加 |
 
 以 NoneBot2 为例（反向 WS）：容器按上面的示例设置 `QQCACHE_WS_REVERSE_URL=ws://127.0.0.1:8080/onebot/v11/ws`，NoneBot 一侧监听 8080 端口并填写同一个令牌：
 
@@ -125,7 +125,7 @@ PORT=8080
 ONEBOT_ACCESS_TOKEN=<access-token>
 ```
 
-Satori（默认 `5500`）和 automatic 协议（默认 `5600`）在 WebUI「传输管理」页启用。Koishi 使用 `@koishijs/plugin-adapter-satori` 连接。
+Satori（默认 `5500`）和 automatic 协议（默认 `5600`）在 WebUI「通道管理」页新建对应通道即可启用；监听非回环地址时必须设置令牌，留空会自动生成。Koishi 使用 `@koishijs/plugin-adapter-satori` 连接。
 
 ## 配置
 

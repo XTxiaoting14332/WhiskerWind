@@ -1,0 +1,17 @@
+__pycache__/
+*.pyc
+*.sqlite3
+*.sqlite3-wal
+*.sqlite3-shm
+fixtures/
+docker/qq-files.tar
+node_modules/
+webui/uploads/
+webui/.env
+.stfolder/
+qqcache.sqlite3
+
+# 内部文档与调试/逆向脚本，不随仓库发布
+HANDOFF.md
+docker/hunt_dbkey.py
+docker/probe_*.py

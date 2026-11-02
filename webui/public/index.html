@@ -1,0 +1,729 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <meta name="ww-build" content="ww16">
+  <title>WhiskerWind 控制台</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg?v=ww16">
+  <link rel="alternate icon" href="/favicon.ico?v=ww16" sizes="16x16 32x32 48x48">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png?v=ww16">
+  <link rel="stylesheet" href="/style.css?v=ww16">
+</head>
+<body>
+
+<!-- Login Gate View (shown if no session or 401) -->
+<div class="login-wrapper" id="loginModal" style="display:none">
+  <div class="login-card">
+    <div class="login-logo brand-mark"><img src="/favicon.svg?v=ww16" alt="夜风"></div>
+    <h1 class="login-title">WhiskerWind</h1>
+    <p class="login-subtitle">请输入面板访问密码以继续</p>
+    <div class="login-error" id="loginError"></div>
+    <form id="loginForm">
+      <div class="form-group" style="text-align:left">
+        <label class="form-label" for="loginPassword">面板密码</label>
+        <input class="input" type="password" id="loginPassword" placeholder="••••••••" required autofocus autocomplete="current-password">
+      </div>
+      <button class="btn btn-primary" type="submit" id="loginBtn" style="width:100%;margin-top:8px">登 录</button>
+    </form>
+  </div>
+</div>
+
+<!-- 下线通知：QQ 被踢下线时弹出原文（QQ 那边的弹框已被自动点掉） -->
+<div class="modal-backdrop" id="kickNoticeModal" style="z-index:600">
+  <div class="modal-card" style="max-width:420px">
+    <div class="modal-header"><h3 id="kickNoticeTitle" style="margin:0">QQ 已下线</h3></div>
+    <div class="modal-body">
+      <p id="kickNoticeText" style="white-space:pre-wrap;line-height:1.6;margin:0 0 10px"></p>
+      <p id="kickNoticeTime" style="font-size:12px;color:var(--muted);margin:0"></p>
+      <p style="font-size:12.5px;color:var(--muted);margin:10px 0 0">协议端不会自动重新登录（避免和另一台设备来回互踢），需要时请重新扫码或在 VNC 里登录。</p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" id="btnKickNoticeOk">知道了</button>
+      <button class="btn btn-primary" id="btnKickNoticeLogin">去登录</button>
+    </div>
+  </div>
+</div>
+
+<!-- QQ QR Scan Login Modal (Popup overlay over main console) -->
+<div class="modal-backdrop" id="qqLoginModal" style="display:none">
+  <div class="modal-card" style="max-width:440px;text-align:center;position:relative">
+    <button class="btn btn-secondary btn-icon" id="btnCloseQQLoginModal" style="position:absolute;top:12px;right:12px;width:28px;height:28px;z-index:2" title="关闭弹窗">✕</button>
+    <div class="login-logo" style="background:#0099ff;margin:4px auto 12px">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="#fff"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 3c1.66 0 3 1.34 3 3s-1.34 3-3 3-3-1.34-3-3 1.34-3 3-3zm0 14.2c-2.5 0-4.71-1.28-6-3.22.03-1.99 4-3.08 6-3.08 1.99 0 5.97 1.09 6 3.08-1.29 1.94-3.5 3.22-6 3.22z"/></svg>
+    </div>
+    <h1 class="login-title" style="font-size:18px">Linux QQ 扫码登录</h1>
+    <p class="login-subtitle" style="margin-bottom:16px;font-size:12.5px">请使用手机 QQ 扫描下方二维码完成账号授权</p>
+
+    <div style="position:relative;display:inline-block;border:1px solid var(--border);border-radius:var(--r-m);padding:10px;background:#fff;margin-bottom:14px;box-shadow:var(--shadow-md)">
+      <div id="standaloneQrPlaceholder" style="width:200px;height:200px;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#f9f9f9;border-radius:var(--r-s);color:var(--muted)">
+        <span class="spinner" style="margin-bottom:10px"></span>
+        <span id="standaloneQrPlaceholderText" style="font-size:12px">正在加载登录二维码…</span>
+      </div>
+      <img id="standaloneQrImg" style="width:200px;height:200px;display:none;object-fit:contain" alt="登录二维码">
+      <div id="standaloneQrOverlay" style="display:none;position:absolute;inset:0;background:rgba(0,0,0,0.75);flex-direction:column;align-items:center;justify-content:center;color:#fff;border-radius:var(--r-m)">
+        <span class="badge badge-red" style="margin-bottom:10px">二维码已过期</span>
+        <button class="btn btn-primary btn-sm" id="btnReloadStandaloneQr">重新加载</button>
+      </div>
+    </div>
+
+    <div style="display:flex;align-items:center;justify-content:center;gap:10px;margin-bottom:14px">
+      <button class="btn btn-secondary btn-sm" id="btnRefreshStandaloneQr">刷新二维码</button>
+      <button class="btn btn-secondary btn-sm" id="btnViewContainerScreen">查看容器屏幕</button>
+    </div>
+
+    <div style="display:flex;align-items:center;justify-content:center;gap:8px;font-size:12.5px;color:var(--muted)">
+      <span class="pulse-dot" style="width:8px;height:8px"></span>
+      <span id="standaloneScanStatus">等待手机 QQ 扫码…</span>
+    </div>
+
+    <div style="margin-top:18px;padding-top:14px;border-top:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;font-size:12.5px">
+      <button id="btnSkipToConsole" class="btn btn-secondary btn-sm">暂不登录，进入控制台</button>
+      <button id="btnLogoutFromQr" style="color:var(--muted);background:none;border:none;cursor:pointer;padding:4px 8px;font-size:12.5px">退出面板</button>
+    </div>
+  </div>
+</div>
+
+<div class="app-shell" id="appShell">
+  <!-- Mobile Scrim -->
+  <div class="drawer-scrim" id="drawerScrim"></div>
+
+  <!-- Sidebar Navigation Drawer -->
+  <aside class="nav-drawer" id="navDrawer">
+    <div class="drawer-header">
+      <div class="drawer-logo brand-mark"><img src="/favicon.svg?v=ww16" alt="夜风"></div>
+      <div class="drawer-title-group">
+        <h2>WhiskerWind</h2>
+        <span class="brand-badge">Console</span>
+      </div>
+    </div>
+
+    <!-- Navigation Menu Items -->
+    <nav class="drawer-menu" id="drawerMenu">
+      <button class="nav-item active" data-v="overview">
+        <svg viewBox="0 0 24 24"><path d="M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z"/></svg>
+        <span>运行概览</span>
+      </button>
+      <button class="nav-item" data-v="events">
+        <svg viewBox="0 0 24 24"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-5 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z"/></svg>
+        <span>事件日志</span>
+      </button>
+      <button class="nav-item" data-v="transports">
+        <svg viewBox="0 0 24 24"><path d="M4 11h5V5H4v6zm0 7h5v-6H4v6zm6 0h5v-6h-5v6zm6 0h5v-6h-5v6zm-6-7h5V5h-5v6zm6-6v6h5V5h-5z"/></svg>
+        <span>传输管理</span>
+      </button>
+      <button class="nav-item" data-v="logs">
+        <svg viewBox="0 0 24 24"><path d="M20 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 14H4V8h16v10zm-2-1h-4v-2h4v2zm0-4h-4v-2h4v2zM6 10h5v5H6z"/></svg>
+        <span>服务日志</span>
+      </button>
+      <button class="nav-item" data-v="settings">
+        <svg viewBox="0 0 24 24"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg>
+        <span>状态与设置</span>
+      </button>
+    </nav>
+
+    <!-- Theme Switcher & Logout -->
+    <div class="drawer-footer">
+      <div class="theme-segmented-control" id="themeSegmented">
+        <button class="theme-opt" data-theme-val="auto" title="跟随系统">
+          <svg viewBox="0 0 24 24"><path d="M20 4H4c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h6v2H8v2h8v-2h-2v-2h6c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 12H4V6h16v10z"/></svg>
+        </button>
+        <button class="theme-opt" data-theme-val="light" title="浅色主题">
+          <svg viewBox="0 0 24 24"><path d="M12 7c-2.76 0-5 2.24-5 5s2.24 5 5 5 5-2.24 5-5-2.24-5-5-5zM2 13h2c.55 0 1-.45 1-1s-.45-1-1-1H2c-.55 0-1 .45-1 1s.45 1 1 1zm18 0h2c.55 0 1-.45 1-1s-.45-1-1-1h-2c-.55 0-1 .45-1 1s.45 1 1 1zM11 2v2c0 .55.45 1 1 1s1-.45 1-1V2c0-.55-.45-1-1-1s-1 .45-1 1zm0 18v2c0 .55.45 1 1 1s1-.45 1-1v-2c0-.55-.45-1-1-1s-1 .45-1 1z"/></svg>
+        </button>
+        <button class="theme-opt active" data-theme-val="dark" title="深色主题">
+          <svg viewBox="0 0 24 24"><path d="M12 3c-4.97 0-9 4.03-9 9s4.03 9 9 9 9-4.03 9-9c0-.46-.04-.92-.1-1.36-.98 1.37-2.58 2.26-4.4 2.26-3.03 0-5.5-2.47-5.5-5.5 0-1.82.89-3.42 2.26-4.4-.44-.06-.9-.1-1.36-.1z"/></svg>
+        </button>
+      </div>
+      <button class="btn btn-secondary btn-sm" id="btnLogout" title="退出登录">退出面板</button>
+    </div>
+  </aside>
+
+  <!-- Main View Area -->
+  <div class="main-wrapper">
+    <!-- Top Bar -->
+    <header class="top-app-bar">
+      <button class="menu-toggle-btn" id="btnMenuToggle">
+        <svg viewBox="0 0 24 24"><path d="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z"/></svg>
+      </button>
+
+      <div class="breadcrumbs">
+        <span class="breadcrumb-root">WhiskerWind</span>
+        <span class="breadcrumb-sep">/</span>
+        <span class="breadcrumb-current" id="pageTitle">运行概览</span>
+      </div>
+
+      <div class="spacer"></div>
+
+      <!-- Quick QQ Login Action Button -->
+      <button class="btn btn-primary btn-sm" id="btnTopBarQQLogin" style="display:none;margin-right:10px;padding:4px 10px;font-size:12px;height:28px">扫码登录 QQ</button>
+
+      <!-- Upstream Connection Pill -->
+      <div class="chip-status" id="upstreamChip" title="BFF ↔ qqcache 容器连通状态">
+        <span class="pulse-dot pulse" id="upstreamDot"></span>
+        <span id="upstreamTxt">连接中…</span>
+      </div>
+    </header>
+
+    <!-- Content Sections -->
+    <main class="content-area">
+      <div class="view-container">
+
+        <!-- ==================== 1. 运行概览 ==================== -->
+        <section class="view active" id="v-overview">
+          <!-- NapCat-Style Top Section: Left Column (Account + System Info) & Right Column (Hardware & Gauges) -->
+          <div class="napcat-top-grid">
+            <!-- Left Column: Account & System Information -->
+            <div class="napcat-left-col">
+              <!-- Account Card -->
+              <div class="card napcat-account-card">
+                <div class="account-card-top">
+                  <div class="account-avatar-wrap">
+                    <img class="account-avatar" id="ovAccountAvatar" src="/favicon.svg" alt="头像" onerror="this.onerror=null;this.src='/favicon.svg'">
+                    <span class="account-status-dot offline" id="ovAccountStatusDot" title="离线"></span>
+                  </div>
+                  <div class="account-details">
+                    <div class="account-title-row">
+                      <h2 class="account-name" id="ovAccountName">未登录</h2>
+                      <span class="badge badge-gray" id="ovAccountStatusBadge">待扫码登录</span>
+                    </div>
+                    <div class="account-sub-row">
+                      <span class="account-uin-tag" id="ovAccountUinTag">QQ: —</span>
+                      <span class="badge badge-subtle" id="ovOneBotVer">OneBot v11</span>
+                    </div>
+                  </div>
+                </div>
+                <div class="account-card-bottom">
+                  <button class="btn btn-primary" id="btnOvQuickLogin" onclick="showQQLoginModal()" style="display:none">
+                    <svg viewBox="0 0 24 24" style="width:16px;height:16px;fill:currentColor"><path d="M3 3h8v8H3V3zm2 2v4h4V5H5zm8-2h8v8h-8V3zm2 2v4h4V5h-4zM3 13h8v8H3v-8zm2 2v4h4v-4H5zm13-2h3v2h-3v-2zm-3 0h2v3h-2v-3zm2 3h2v2h-2v-2zm-2 2h2v3h-2v-3zm4 0h2v3h-2v-3zm0-2h2v2h-2v-2zm0-3h3v2h-3v-2z"/></svg>
+                    <span>扫码登录</span>
+                  </button>
+                  <button class="btn btn-secondary" id="btnOvRefreshStatus" onclick="loadOverview()" title="刷新数据">
+                    <svg viewBox="0 0 24 24" style="width:15px;height:15px;fill:currentColor"><path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg>
+                    <span>刷新状态</span>
+                  </button>
+                </div>
+              </div>
+
+              <!-- System Information Card (系统信息) -->
+              <div class="card napcat-info-card">
+                <div class="card-header">
+                  <div class="card-title">
+                    <svg viewBox="0 0 24 24"><path d="M11 7h2v2h-2zm0 4h2v6h-2zm1-9C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z"/></svg>
+                    <span>系统概览</span>
+                  </div>
+                  <span class="badge badge-green" id="ovSystemStatusBadge">运行正常</span>
+                </div>
+                <div class="card-body">
+                  <div class="sys-sub-info" style="margin-top:0">
+                    <div class="sys-sub-row">
+                      <span class="sys-sub-label">
+                        <svg viewBox="0 0 24 24" class="sys-row-icon"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+                        <span>WhiskerWind 版本</span>
+                      </span>
+                      <span class="sys-sub-val" id="ovCoreVer">v0.1.0</span>
+                    </div>
+                    <div class="sys-sub-row">
+                      <span class="sys-sub-label">
+                        <svg viewBox="0 0 24 24" class="sys-row-icon"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 3c1.66 0 3 1.34 3 3s-1.34 3-3 3-3-1.34-3-3 1.34-3 3-3zm0 14.2c-2.5 0-4.71-1.28-6-3.22.03-1.99 4-3.08 6-3.08 1.99 0 5.97 1.09 6 3.08-1.29 1.94-3.5 3.22-6 3.22z"/></svg>
+                        <span>QQ 版本</span>
+                      </span>
+                      <span class="sys-sub-val" id="ovQQVer">v3.2.33-52892</span>
+                    </div>
+                    <div class="sys-sub-row">
+                      <span class="sys-sub-label">
+                        <svg viewBox="0 0 24 24" class="sys-row-icon"><path d="M20 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm-5 14H4v-4h11v4zm0-5H4V9h11v4zm5 5h-4V9h4v9z"/></svg>
+                        <span>服务协议</span>
+                      </span>
+                      <span class="sys-sub-val">OneBot v11</span>
+                    </div>
+                    <div class="sys-sub-row">
+                      <span class="sys-sub-label">
+                        <svg viewBox="0 0 24 24" class="sys-row-icon"><path d="M4 6h16v10H4V6zm16 12H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2h16c1.1 0 2 .9 2 2v10c0 1.1-.9 2-2 2zm-8 2h4v2h-4v-2z"/></svg>
+                        <span>系统环境</span>
+                      </span>
+                      <span class="sys-sub-val" id="ovSysPlatform">Linux x64</span>
+                    </div>
+                    <div class="sys-sub-row">
+                      <span class="sys-sub-label">
+                        <svg viewBox="0 0 24 24" class="sys-row-icon"><path d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67z"/></svg>
+                        <span>运行时长</span>
+                      </span>
+                      <span class="sys-sub-val" id="ovSysUptime">0s</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Right Column: Hardware & Telemetry Card (处理器 / 系统占用 / QQ占用 & Circular Rings) -->
+            <div class="card napcat-hardware-card">
+              <div class="napcat-hw-grid">
+                <!-- Hardware Metrics Text Column -->
+                <div class="napcat-hw-text">
+                  <!-- Section: 处理器 -->
+                  <div class="hw-section">
+                    <div class="hw-sec-header">
+                      <div class="hw-sec-title">
+                        <svg viewBox="0 0 24 24"><path d="M6 2v2h12V2h2v2h1a2 2 0 0 1 2 2v1h2v2h-2v2h2v2h-2v2h2v2h-2v1a2 2 0 0 1-2 2h-1v2h-2v-2H6v2H4v-2H3a2 2 0 0 1-2-2v-1H0v-2h1v-2H0v-2h1V9H0V7h1V6a2 2 0 0 1 2-2h1V2h2zm13 4H5v12h14V6zm-4 3h-2v2h2V9zm-4 0H9v2h2V9zm4 4h-2v2h2v-2zm-4 0H9v2h2v-2z"/></svg>
+                        <span>处理器</span>
+                      </div>
+                      <span class="badge badge-blue" id="ovCpuPercentBadge">0.0%</span>
+                    </div>
+                    <div class="hw-detail-grid">
+                      <div class="hw-detail-item hw-detail-item-full">
+                        <span class="hw-detail-label">型号</span>
+                        <span class="hw-detail-val" id="ovCpuModel" title="处理器型号">—</span>
+                      </div>
+                      <div class="hw-detail-item">
+                        <span class="hw-detail-label">核心 / 架构</span>
+                        <span class="hw-detail-val" id="ovCpuCores">—</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="hw-sec-divider"></div>
+
+                  <!-- Section: 系统占用 (内存 & 磁盘) -->
+                  <div class="hw-section">
+                    <div class="hw-sec-header">
+                      <div class="hw-sec-title">
+                        <svg viewBox="0 0 24 24"><path d="M2 4h20v4H2V4zm0 6h20v4H2v-4zm0 6h20v4H2v-4zM4 6h2v1H4V6zm0 6h2v1H4v-1zm0 6h2v1H4v-1z"/></svg>
+                        <span>系统占用</span>
+                      </div>
+                      <span class="badge badge-blue" id="ovMemPercentBadge">0%</span>
+                    </div>
+                    <div class="hw-detail-grid">
+                      <div class="hw-detail-item">
+                        <span class="hw-detail-label">系统内存</span>
+                        <span class="hw-detail-val" id="ovMemText">0 / 0 GB</span>
+                      </div>
+                      <div class="hw-detail-item">
+                        <span class="hw-detail-label">磁盘空间 (/)</span>
+                        <span class="hw-detail-val" id="ovDiskText">0 / 0 GB</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="hw-sec-divider"></div>
+
+                  <!-- Section: QQ占用 -->
+                  <div class="hw-section">
+                    <div class="hw-sec-header">
+                      <div class="hw-sec-title">
+                        <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 3c1.66 0 3 1.34 3 3s-1.34 3-3 3-3-1.34-3-3 1.34-3 3-3zm0 14.2c-2.5 0-4.71-1.28-6-3.22.03-1.99 4-3.08 6-3.08 1.99 0 5.97 1.09 6 3.08-1.29 1.94-3.5 3.22-6 3.22z"/></svg>
+                        <span>QQ占用</span>
+                      </div>
+                      <span class="badge badge-green" id="ovQqProcBadge">运行中</span>
+                    </div>
+                    <div class="hw-detail-grid">
+                      <div class="hw-detail-item">
+                        <span class="hw-detail-label">RSS 物理内存</span>
+                        <span class="hw-detail-val" id="ovQqRss">0 MB</span>
+                      </div>
+                      <div class="hw-detail-item">
+                        <span class="hw-detail-label">进程树 / PID</span>
+                        <span class="hw-detail-val" id="ovQqProcTree">—</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Circular SVG Progress Gauges Column -->
+                <div class="napcat-hw-gauges">
+                  <!-- CPU Gauge Ring -->
+                  <div class="gauge-ring-card">
+                    <div class="gauge-circle-wrap">
+                      <svg class="gauge-svg" viewBox="0 0 100 100">
+                        <circle class="gauge-track" cx="50" cy="50" r="40"></circle>
+                        <circle class="gauge-bar gauge-cpu" id="ovCpuGaugeRing" cx="50" cy="50" r="40"></circle>
+                      </svg>
+                      <div class="gauge-content">
+                        <span class="gauge-pct" id="ovCpuPercent">0.0%</span>
+                        <span class="gauge-sublabel">CPU 负载</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- Memory Gauge Ring -->
+                  <div class="gauge-ring-card">
+                    <div class="gauge-circle-wrap">
+                      <svg class="gauge-svg" viewBox="0 0 100 100">
+                        <circle class="gauge-track" cx="50" cy="50" r="40"></circle>
+                        <circle class="gauge-bar gauge-mem" id="ovMemGaugeRing" cx="50" cy="50" r="40"></circle>
+                      </svg>
+                      <div class="gauge-content">
+                        <span class="gauge-pct" id="ovMemPercent">0%</span>
+                        <span class="gauge-sublabel">内存占用</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Account Counters Row (今日入站, 今日发送, 缓存会话, 累计消息) -->
+          <div class="card account-stats-strip-card">
+            <div class="account-stats-strip">
+              <div class="account-stat-item">
+                <span class="account-stat-value" id="ovStatIn">0</span>
+                <span class="account-stat-label">今日入站</span>
+              </div>
+              <div class="account-stat-item">
+                <span class="account-stat-value" id="ovStatOut">0</span>
+                <span class="account-stat-label">今日发送</span>
+              </div>
+              <div class="account-stat-item">
+                <span class="account-stat-value" id="ovStatConvs">0</span>
+                <span class="account-stat-label">缓存会话</span>
+              </div>
+              <div class="account-stat-item">
+                <span class="account-stat-value" id="ovStatSeen">0</span>
+                <span class="account-stat-label">累计消息</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Bottom: Transports Summary Card (通道传输概况放下去) -->
+          <div class="card overview-transports-card">
+            <div class="card-header">
+              <h3 class="card-title">
+                <svg viewBox="0 0 24 24"><path d="M4 11h5V5H4v6zm0 7h5v-6H4v6zm6 0h5v-6h-5v6zm6 0h5v-6h-5v6zm-6-7h5V5h-5v6zm6-6v6h5V5h-5z"/></svg>
+                通道传输概况
+              </h3>
+              <button class="btn btn-secondary btn-sm" onclick="navTo('transports')">管理通道</button>
+            </div>
+            <div class="card-body" id="overviewTransports">
+              <div style="color:var(--muted);font-size:13.5px">加载中…</div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ==================== 4. 事件日志 ==================== -->
+        <section class="view" id="v-events">
+          <div class="card events-view-card">
+            <div class="card-header">
+              <h3 class="card-title">
+                <svg viewBox="0 0 24 24"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-5 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z"/></svg>
+                实时事件流
+              </h3>
+              <div class="events-toolbar">
+                <select class="select" id="eventFilterType" style="width:130px;height:32px;font-size:12.5px">
+                  <option value="">全部类型</option>
+                  <option value="message">message</option>
+                  <option value="message_sent">message_sent</option>
+                  <option value="meta_event">meta_event</option>
+                  <option value="notice">notice</option>
+                  <option value="request">request</option>
+                </select>
+                <input class="input" type="text" id="eventFilterUin" placeholder="按 UIN 过滤…" style="width:130px;height:32px;font-size:12.5px">
+                <button class="btn btn-secondary btn-sm" id="btnToggleEventPause">暂停滚动</button>
+                <button class="btn btn-secondary btn-sm" id="btnClearEvents">清空</button>
+              </div>
+            </div>
+            <div class="card-body events-card-body">
+              <div id="eventsStreamContainer" class="events-stream-list">
+                <div style="color:var(--muted);text-align:center;padding:20px">等待实时事件流入中…</div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ==================== 5. 传输管理 ==================== -->
+        <section class="view" id="v-transports">
+          <div class="card">
+            <div class="card-header">
+              <h3 class="card-title">
+                <svg viewBox="0 0 24 24"><path d="M4 11h5V5H4v6zm0 7h5v-6H4v6zm6 0h5v-6h-5v6zm6 0h5v-6h-5v6zm-6-7h5V5h-5v6zm6-6v6h5V5h-5z"/></svg>
+                OneBot v11 传输通道
+              </h3>
+              <button class="btn btn-primary btn-sm" id="btnOpenAddTransportModal">+ 新建传输通道</button>
+            </div>
+            <div class="table-wrap">
+              <table class="table">
+                <thead>
+                  <tr>
+                    <th style="width:70px">ID</th>
+                    <th style="width:120px">类型</th>
+                    <th style="width:100px">来源</th>
+                    <th>地址 / 目标</th>
+                    <th style="width:120px">状态</th>
+                    <th style="width:90px;text-align:right">操作</th>
+                  </tr>
+                </thead>
+                <tbody id="transportsTableBody">
+                  <tr><td colspan="6" style="text-align:center;color:var(--muted)">加载中…</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="card-footer">
+              <span>说明：startup 来源通道为容器启动参数配置，不可删除；runtime 通道持久化并自动恢复。</span>
+            </div>
+          </div>
+
+          <!-- Protocols Card -->
+          <div class="card">
+            <div class="card-header">
+              <h3 class="card-title">
+                <svg viewBox="0 0 24 24"><path d="M9.4 16.6 4.8 12l4.6-4.6L8 6l-6 6 6 6 1.4-1.4zm5.2 0 4.6-4.6-4.6-4.6L16 6l6 6-6 6-1.4-1.4z"/></svg>
+                Satori / automatic
+              </h3>
+              <button class="btn btn-secondary btn-sm" id="btnRefreshProtocols">刷新</button>
+            </div>
+            <div class="card-body" id="protocolsContainer">
+              <div style="color:var(--muted)">加载协议列表中…</div>
+            </div>
+            <div class="card-footer">
+              <span>启停与配置修改即时生效并自动保存，无需重启服务。</span>
+            </div>
+          </div>
+        </section>
+
+        <!-- ==================== 6. 服务日志 ==================== -->
+        <section class="view" id="v-logs">
+          <div class="card">
+            <div class="card-header">
+              <h3 class="card-title">
+                <svg viewBox="0 0 24 24"><path d="M20 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 14H4V8h16v10zm-2-1h-4v-2h4v2zm0-4h-4v-2h4v2zM6 10h5v5H6z"/></svg>
+                服务日志
+              </h3>
+              <div style="display:flex;gap:8px">
+                <select class="select" id="logFilterLevel" style="width:110px;height:32px;font-size:12.5px">
+                  <option value="">全部级别</option>
+                  <option value="DEBUG">DEBUG</option>
+                  <option value="INFO">INFO</option>
+                  <option value="WARNING">WARNING</option>
+                  <option value="ERROR">ERROR</option>
+                </select>
+                <input class="input" type="text" id="logSearchInput" placeholder="搜索日志关键词…" style="width:160px;height:32px;font-size:12.5px">
+                <button class="btn btn-secondary btn-sm" id="btnToggleLogScroll">锁定滚动</button>
+                <button class="btn btn-secondary btn-sm" id="btnLogScrollBottom">回到底部</button>
+                <button class="btn btn-secondary btn-sm" id="btnClearLogs">清空</button>
+              </div>
+            </div>
+            <div class="card-body" style="padding:10px">
+              <div class="stream-window" id="logStreamWindow">
+                <div style="color:var(--muted);text-align:center;padding:20px">正在连接服务日志流…</div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ==================== 7. 设置与状态 ==================== -->
+        <section class="view" id="v-settings">
+          <!-- Login Status Card (Four-State) -->
+          <div class="card">
+            <div class="card-header">
+              <h3 class="card-title">
+                <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 3c1.66 0 3 1.34 3 3s-1.34 3-3 3-3-1.34-3-3 1.34-3 3-3zm0 14.2c-2.5 0-4.71-1.28-6-3.22.03-1.99 4-3.08 6-3.08 1.99 0 5.97 1.09 6 3.08-1.29 1.94-3.5 3.22-6 3.22z"/></svg>
+                QQ 登录状态管理
+              </h3>
+              <button class="btn btn-secondary btn-sm" id="btnRefreshLoginState">刷新状态</button>
+            </div>
+            <div class="card-body" id="settingsLoginStateContainer">
+              <div style="color:var(--muted)">加载登录状态中…</div>
+            </div>
+          </div>
+
+          <!-- Container Screen Capture Card -->
+          <div class="card">
+            <div class="card-header">
+              <h3 class="card-title">
+                <svg viewBox="0 0 24 24"><path d="M21 2H3c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h7l-2 3v1h8v-1l-2-3h7c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 12H3V4h18v10z"/></svg>
+                容器实时屏幕截图
+              </h3>
+              <button class="btn btn-primary btn-sm" id="btnCaptureScreen">刷新截屏</button>
+            </div>
+            <div class="card-body" style="text-align:center">
+              <div id="screenContainer">
+                <div style="color:var(--muted);padding:30px">点击上方“刷新截屏”抓取容器真实 GUI 画面</div>
+              </div>
+            </div>
+            <div class="card-footer">
+              <span>用于查看容器中 QQ 窗口的实时显示状态。</span>
+            </div>
+          </div>
+
+          <!-- Test Command (#ww) Trigger Switch Card -->
+          <div class="card">
+            <div class="card-header">
+              <h3 class="card-title">
+                <svg viewBox="0 0 24 24"><path d="M20 2H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h14l4 4V4c0-1.1-.9-2-2-2zm-2 12H6v-2h12v2zm0-3H6V9h12v2zm0-3H6V6h12v2z"/></svg>
+                测试指令响应 (#ww)
+              </h3>
+              <div style="display:flex;align-items:center;gap:12px">
+                <span class="badge badge-green" id="wwTriggerBadge">已启用</span>
+                <label class="toggle-switch">
+                  <input type="checkbox" id="wwTriggerSwitch" checked>
+                  <span class="slider"></span>
+                </label>
+              </div>
+            </div>
+            <div class="card-body">
+              <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:20px">
+                <div>
+                  <strong style="font-size:14px">收到 "#ww" 自动回复服务运行状态</strong>
+                  <p style="color:var(--muted);font-size:12.5px;margin-top:6px;line-height:1.6">
+                    启用后，当绑定的 QQ 账号在任何群聊或私聊中收到文本恰为 <code style="font-family:var(--font-mono);background:var(--bg-card);padding:2px 6px;border-radius:var(--r-s);border:1px solid var(--border)">#ww</code> 的消息时，服务将自动回复包含当前版本、运行平台及在线时长的系统状态文本。
+                  </p>
+                </div>
+              </div>
+            </div>
+            <div class="card-footer">
+              <span id="wwTriggerHint">关闭后，#ww 仅作为普通消息记录，不会自动回复。</span>
+            </div>
+          </div>
+
+          <!-- Member Binding TTL Card -->
+          <div class="card">
+            <div class="card-header">
+              <h3 class="card-title">
+                <svg viewBox="0 0 24 24"><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10 10-4.5 10-10S17.5 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm.5-13H11v6l5.2 3.2.8-1.3-4.5-2.7V7z"/></svg>
+                成员身份缓存窗口 (TTL)
+              </h3>
+              <span class="badge badge-green" id="memberTtlBadge">—</span>
+            </div>
+            <div class="card-body">
+              <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:12px">
+                <input class="input" type="number" id="memberTtlInput" min="0" step="60" placeholder="3600" style="width:140px;height:34px;font-size:13px">
+                <span style="color:var(--muted);font-size:12.5px">秒</span>
+                <button class="btn btn-primary btn-sm" id="btnSaveMemberTtl">保存</button>
+                <button class="btn btn-secondary btn-sm ttl-preset" data-v="300">5 分钟</button>
+                <button class="btn btn-secondary btn-sm ttl-preset" data-v="3600">1 小时</button>
+                <button class="btn btn-secondary btn-sm ttl-preset" data-v="86400">1 天</button>
+                <button class="btn btn-secondary btn-sm ttl-preset" data-v="0">关闭</button>
+              </div>
+              <p style="color:var(--muted);font-size:12.5px;line-height:1.7">
+                窗口内已验证的群成员直接复用真实 QQ 号，不再重复 GUI 解析；绑定过期后该成员的下一条消息会重新走头像验证。
+                这是检测「成员退群后同名新人入群」的唯一兜底手段——窗口越短越不容易错归，代价是 GUI 验证更频繁。
+              </p>
+            </div>
+            <div class="card-footer">
+              <span id="memberTtlHint">设为 0 表示永久信任已验证的绑定。同名成员不受此设置影响，始终逐条验证。</span>
+            </div>
+          </div>
+
+          <!-- Pipeline Selftest Card -->
+          <div class="card">
+            <div class="card-header">
+              <h3 class="card-title">
+                <svg viewBox="0 0 24 24"><path d="M9.4 16.6L4.8 12l4.6-4.6L8 6l-6 6 6 6 1.4-1.4zm5.2 0l4.6-4.6-4.6-4.6L16 6l6 6-6 6-1.4-1.4z"/></svg>
+                链路自检 (Selftest)
+              </h3>
+              <button class="btn btn-primary btn-sm" id="btnRunSelftest">运行自检</button>
+            </div>
+            <div class="card-body">
+              <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px">
+                <input class="input" type="text" id="selftestConv" placeholder="目标会话名" style="width:200px;height:34px;font-size:13px">
+                <span style="color:var(--muted);font-size:12.5px">按真实入站链路逐段验证，报告断在哪一级：AT-SPI → 登录态 → 通知总线 → Notify 落库 → 打开会话 → UIN 归因 → 消息 emit</span>
+              </div>
+              <div id="selftestResult">
+                <div style="color:var(--muted)">尚未运行。自检期间请勿在 VNC 中操作 QQ 窗口。</div>
+              </div>
+            </div>
+            <div class="card-footer">
+              <span>分段进度实时写入服务日志（见日志页），完整报告追加到容器内 qqcache.sqlite3.selftest.jsonl。</span>
+            </div>
+          </div>
+
+          <!-- Startup Parameters (Readonly) -->
+          <div class="card">
+            <div class="card-header">
+              <h3 class="card-title">
+                <svg viewBox="0 0 24 24"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg>
+                服务运行环境配置
+              </h3>
+            </div>
+            <div class="table-wrap">
+              <table class="table">
+                <tbody id="settingsEnvTable">
+                  <tr><td style="width:200px;font-weight:600">上游地址 (QQCACHE_UPSTREAM)</td><td id="envUpstream" style="font-family:var(--font-mono)">—</td></tr>
+                  <tr><td style="font-weight:600">协议版本</td><td id="envProtocol" style="font-family:var(--font-mono)">OneBot v11</td></tr>
+                  <tr><td style="font-weight:600">Bot Self ID</td><td id="envSelfId" style="font-family:var(--font-mono)">—</td></tr>
+                  <tr><td style="font-weight:600">Bot 昵称</td><td id="envSelfName">—</td></tr>
+                  <tr><td style="font-weight:600">测试指令 (#ww)</td><td id="envWwTrigger">—</td></tr>
+                  <tr><td style="font-weight:600">成员身份缓存 (TTL)</td><td id="envMemberTtl">—</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+      </div>
+    </main>
+  </div>
+</div>
+
+<!-- ==================== Modals ==================== -->
+
+<!-- Add Transport Modal -->
+<div class="modal-backdrop" id="modalAddTransport">
+  <div class="modal-card">
+    <div class="modal-header">
+      <h3 style="font-size:15px;font-weight:600">新建传输通道</h3>
+      <button class="btn btn-secondary btn-icon" id="btnCloseAddTransportModal" style="width:26px;height:26px">✕</button>
+    </div>
+    <form id="formAddTransport">
+      <div class="modal-body">
+        <div class="form-group">
+          <label class="form-label" for="transTypeSelect">传输类型</label>
+          <select class="select" id="transTypeSelect" required>
+            <option value="http">HTTP 监听 (HTTP API + 正向 WS)</option>
+            <option value="ws_reverse">反向 WS 客户端 (连接外部框架)</option>
+            <option value="http_post">HTTP POST 事件上报</option>
+          </select>
+        </div>
+
+        <!-- HTTP Fields -->
+        <div id="fieldsHttp">
+          <div class="form-group">
+            <label class="form-label" for="transHttpHost">监听地址 (Host)</label>
+            <input class="input" type="text" id="transHttpHost" value="127.0.0.1" required>
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="transHttpPort">监听端口 (Port)</label>
+            <input class="input" type="number" id="transHttpPort" placeholder="例如 5701" min="1" max="65535" value="5701" required>
+          </div>
+        </div>
+
+        <!-- WS Reverse Fields -->
+        <div id="fieldsWsReverse" style="display:none">
+          <div class="form-group">
+            <label class="form-label" for="transWsUrl">WebSocket 目标地址</label>
+            <input class="input" type="text" id="transWsUrl" placeholder="ws://127.0.0.1:8080/onebot/v11/ws">
+          </div>
+          <div class="form-hint">容器使用 host 网络时，宿主机上的框架直接填 <code>127.0.0.1</code>；使用 bridge 网络时请填 <code>host.docker.internal</code>，并让框架监听 <code>0.0.0.0</code>。</div>
+          <div class="form-group">
+            <label class="form-label" for="transWsToken">鉴权 Token (可选)</label>
+            <input class="input" type="text" id="transWsToken" placeholder="可选 Bearer Token">
+          </div>
+        </div>
+
+        <!-- HTTP Post Fields -->
+        <div id="fieldsHttpPost" style="display:none">
+          <div class="form-group">
+            <label class="form-label" for="transPostUrl">POST 上报 URL</label>
+            <input class="input" type="text" id="transPostUrl" placeholder="http://127.0.0.1:8080/events">
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" type="button" id="btnCancelAddTransport">取消</button>
+        <button class="btn btn-primary" type="submit" id="btnSubmitAddTransport">创 建</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Image Lightbox -->
+<div class="lightbox" id="imageLightbox">
+  <img class="lightbox-img" id="lightboxImg" src="" alt="查看原图">
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<script src="/app.js?v=ww16"></script>
+</body>
+</html>

@@ -2,7 +2,7 @@
 
 <img src="img/whiskerwind-sticker.svg" width="180" alt="WhiskerWind">
 
-# WhiskerWind
+# WhiskerWind | 风须
 
 _基于官方 Linux QQ 客户端的 Bot 协议端_
 

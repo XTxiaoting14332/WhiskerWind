@@ -6,7 +6,7 @@
 
 _基于官方 Linux QQ 客户端的 Bot 协议端_
 
-> 夜风掠过窗沿，把每一条消息都捎回来。
+> 园果不留双子莺，金瞳亦识夜风清。
 
 [![CI](https://github.com/XTxiaoting14332/WhiskerWind/actions/workflows/ci.yml/badge.svg)](https://github.com/XTxiaoting14332/WhiskerWind/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-GPL--3.0-blue)](LICENSE)

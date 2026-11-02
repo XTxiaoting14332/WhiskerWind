@@ -160,14 +160,12 @@ spawn_bff() {
 spawn_serve() {
     pgrep -f "python3 -m qqcache serve" >/dev/null 2>&1 && return
     # shellcheck disable=SC2206  # QQCACHE_CMD/QQCACHE_ARGS 故意按空格拆成多个参数
-    # 上报目标（HTTP POST / 反向 WS）走 env，逗号分隔可写多个；也可以在 WebUI 里加。
-    # host 网络下宿主机上的框架直接用 127.0.0.1；bridge 网络用 host.docker.internal
+    # QQCACHE_POST_URL、QQCACHE_WS_REVERSE_URL、QQCACHE_TEST_TRIGGER 由 serve
+    # 直接从环境变量读取，这里不再转成参数，否则地址会注册两次
     local py=(python3 -m qqcache ${QQCACHE_CMD:-serve --host ${QQCACHE_HOST:-0.0.0.0} --port ${QQCACHE_PORT:-5700}}
         --db "$STATE_DIR/qqcache.sqlite3"
-        ${QQCACHE_POST_URL:+--post-url "$QQCACHE_POST_URL"}
-        ${QQCACHE_WS_REVERSE_URL:+--ws-reverse-url "$QQCACHE_WS_REVERSE_URL"}
         --access-token "$QQCACHE_TOKEN"
-        ${QQCACHE_TEST_TRIGGER:+--test-trigger} --heartbeat 5 ${QQCACHE_ARGS:-})
+        --heartbeat 5 ${QQCACHE_ARGS:-})
     if [ "${QQCACHE_GDB:-0}" = "1" ] && command -v gdb >/dev/null 2>&1; then
         # 诊断模式（QQCACHE_GDB=1）：native 崩溃没有 traceback——套 gdb
         # 让段错误把全线程 backtrace 落进日志再死。默认不开：gdb 的 vfork

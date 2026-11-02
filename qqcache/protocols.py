@@ -26,6 +26,12 @@ EDITABLE = {
     "automatic": {"enabled", "host", "port", "token", "reverse_urls"},
 }
 TITLES = {"satori": "Satori", "automatic": "automatic"}
+LOOPBACK = {"127.0.0.1", "localhost", "::1"}
+
+
+def _needs_token(cfg):
+    """启用且监听非回环地址的协议必须有令牌。"""
+    return bool(cfg.get("enabled")) and str(cfg.get("host") or "") not in LOOPBACK
 
 
 class ProtocolManager:
@@ -54,6 +60,16 @@ class ProtocolManager:
         os.replace(tmp, self.path)
 
     def start_enabled(self):
+        generated = False
+        for name, cfg in self.config.items():
+            if _needs_token(cfg) and not cfg.get("token"):
+                # 旧版本保存的无令牌配置：补一个令牌再启动
+                cfg["token"] = secrets.token_urlsafe(24)
+                generated = True
+                logger.warning(f"协议 {name} 监听 {cfg['host']} 但未设置令牌，已自动生成"
+                               "（在 WebUI「传输管理」中查看）")
+        if generated:
+            self._persist()
         for name, cfg in self.config.items():
             if cfg.get("enabled"):
                 try:
@@ -139,6 +155,11 @@ class ProtocolManager:
                     raise ApiError(1400, "令牌不能包含空格或换行")
                 new["token"] = tok
             if changes.get("regenerate_token"):
+                new["token"] = secrets.token_urlsafe(24)
+            if _needs_token(new) and not new.get("token"):
+                if "token" in changes:
+                    raise ApiError(1400, f"监听 {new['host']} 时必须设置令牌；"
+                                         "不需要鉴权请把监听地址改为 127.0.0.1")
                 new["token"] = secrets.token_urlsafe(24)
             try:
                 new["port"] = int(new["port"])

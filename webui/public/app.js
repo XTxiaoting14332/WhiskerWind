@@ -1510,7 +1510,7 @@ function renderProtocols(list) {
         <div class="proto-token">
           <span>令牌</span>
           <input class="input proto-token-input" type="password" autocomplete="new-password" spellcheck="false"
-                 placeholder="${p.token_set ? '已设置（点「显示」查看）' : '未设置（不鉴权）'}">
+                 placeholder="${p.token_set ? '已设置（点「显示」查看）' : '未设置（不鉴权，仅限监听 127.0.0.1）'}">
           <button class="btn btn-secondary btn-sm proto-token-show" type="button">显示</button>
           <button class="btn btn-secondary btn-sm proto-token-copy" type="button">复制</button>
           <button class="btn btn-secondary btn-sm proto-token-regen" type="button">随机生成</button>
@@ -1590,7 +1590,7 @@ function renderProtocols(list) {
       if (rev) changes.reverse_urls = rev.value.split('\n').map((u) => u.trim()).filter(Boolean);
       if (tokenDirty) {
         const t = tokenInput.value.trim();
-        if (!t && !confirm('令牌为空将关闭鉴权，任何能访问该端口的程序都可以收发消息。确定继续吗？')) return;
+        if (!t && !confirm('令牌为空将关闭鉴权，仅在监听 127.0.0.1 时允许。确定继续吗？')) return;
         changes.token = t;
       }
       save(changes, '配置已保存');

@@ -448,12 +448,13 @@ def cmd_serve(args):
         level="DEBUG" if os.environ.get("QQCACHE_DEBUG") else "INFO",
     )
 
-    post_urls = list(args.post_url)
-    env_urls = os.environ.get("QQCACHE_POST_URL", "")
-    post_urls += [u.strip() for u in env_urls.split(",") if u.strip()]
-    ws_reverse_urls = list(args.ws_reverse_url)
-    env_rws = os.environ.get("QQCACHE_WS_REVERSE_URL", "")
-    ws_reverse_urls += [u.strip() for u in env_rws.split(",") if u.strip()]
+    def urls(cli, env):
+        # 参数与环境变量合并；同一地址只注册一次
+        items = list(cli) + os.environ.get(env, "").split(",")
+        return list(dict.fromkeys(u.strip() for u in items if u.strip()))
+
+    post_urls = urls(args.post_url, "QQCACHE_POST_URL")
+    ws_reverse_urls = urls(args.ws_reverse_url, "QQCACHE_WS_REVERSE_URL")
 
     bridge = Bridge(
         args.db,
